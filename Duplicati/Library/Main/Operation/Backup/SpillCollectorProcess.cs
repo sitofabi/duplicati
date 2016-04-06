@@ -46,6 +46,8 @@ namespace Duplicati.Library.Main.Operation.Backup
             {
                 var lst = new List<VolumeUploadRequest>();
 
+                Console.WriteLine("Started spill processor");
+
                 while(!self.Input.IsRetired)
                     try
                     {
@@ -58,6 +60,8 @@ namespace Duplicati.Library.Main.Operation.Backup
                         throw;
                     }
 
+
+                Console.WriteLine("Spill processor is combining {0} items", lst.Count);
 
                 while(lst.Count > 1)
                 {
@@ -120,6 +124,8 @@ namespace Duplicati.Library.Main.Operation.Backup
 
                 }
 
+                Console.WriteLine("Spill processor has combined, output remaining {0} items", lst.Count);
+
                 foreach(var n in lst)
                 {
                     // We ignore the stop signal, but not the pause and terminate
@@ -128,6 +134,9 @@ namespace Duplicati.Library.Main.Operation.Backup
                     n.BlockVolume.Close();
                     await self.Output.WriteAsync(n);
                 }
+
+                Console.WriteLine("Spill processor is done");
+
 
             });
         }

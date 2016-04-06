@@ -102,6 +102,8 @@ namespace Duplicati.Library.Main.Operation
                 // Make sure the CompressionHins table is initialized, otherwise all workers will initialize it
                 var tb = options.CompressionHints.Count;
 
+                Console.WriteLine("Starting {0} hashers and {1} compressors", options.ConcurrencyBlockHashers, options.ConcurrencyCompressors);
+
                 Task all;
                 using(new ChannelScope())
                 {
@@ -128,6 +130,8 @@ namespace Duplicati.Library.Main.Operation
                 }
 
                 await all;
+
+                Console.WriteLine("Completed all operations, task state is {0}", all.Status);
 
                 if (options.ChangedFilelist != null && options.ChangedFilelist.Length >= 1)
                     await database.AppendFilesFromPreviousSetAsync(options.DeletedFilelist);

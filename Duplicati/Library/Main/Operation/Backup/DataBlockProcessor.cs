@@ -32,6 +32,8 @@ namespace Duplicati.Library.Main.Operation.Backup
     /// </summary>
     internal static class DataBlockProcessor
     {
+        private static int _ThreadId = 0;
+
         public static Task Run(BackupDatabase database, Options options, ITaskReader taskreader)
         {
             return AutomationExtensions.RunTask(
@@ -47,6 +49,9 @@ namespace Duplicati.Library.Main.Operation.Backup
             {
                 BlockVolumeWriter blockvolume = null;
                 var log = new LogWrapper(self.LogChannel);
+                var tid = System.Threading.Interlocked.Increment(ref _ThreadId);
+
+                Console.WriteLine("Started block processor {0}", tid);
 
                 try
                 {
@@ -106,8 +111,17 @@ namespace Duplicati.Library.Main.Operation.Backup
                     {
                         // If we have collected data, merge all pending volumes into a single volume
                         if (blockvolume != null && blockvolume.SourceSize > 0)
+                        {
+                            Console.WriteLine("Spilling from block processor {0}", tid);
+
                             await self.SpillPickup.WriteAsync(new VolumeUploadRequest(blockvolume, true));
+                        }
+
+                        Console.WriteLine("Finished block processor {0}", tid);
+
                     }
+                    else
+                        Console.WriteLine("Crashed block processor {0} - {1}", tid, ex);
 
                     throw;
                 }

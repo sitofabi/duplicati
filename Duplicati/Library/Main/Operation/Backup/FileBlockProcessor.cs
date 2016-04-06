@@ -31,6 +31,8 @@ namespace Duplicati.Library.Main.Operation.Backup
     /// </summary>
     internal static class FileBlockProcessor
     {
+        private static int _ThreadId = 0;
+
         public static Task Run(Snapshots.ISnapshotService snapshot, Options options, BackupDatabase database, BackupStatsCollector stats, ITaskReader taskreader)
         {
             return AutomationExtensions.RunTask(
@@ -48,6 +50,9 @@ namespace Duplicati.Library.Main.Operation.Backup
                 var blocksize = options.Blocksize;
                 var filehasher = System.Security.Cryptography.HashAlgorithm.Create(options.FileHashAlgorithm);                    
                 var blockhasher = System.Security.Cryptography.HashAlgorithm.Create(options.BlockHashAlgorithm);                    
+                var tid = System.Threading.Interlocked.Increment(ref _ThreadId);
+
+                Console.WriteLine("Started hash processor {0}", tid);
 
                 while (await taskreader.ProgressAsync)
                 {
@@ -173,6 +178,8 @@ namespace Duplicati.Library.Main.Operation.Backup
                     }
                     catch(Exception ex)
                     {
+                        Console.WriteLine("Stopped hash processor {0} - {1}", tid, ex);
+
                         if (ex.IsRetiredException())
                             return;
                         else
@@ -180,8 +187,13 @@ namespace Duplicati.Library.Main.Operation.Backup
                     }
                     finally
                     {
+                        Console.WriteLine("Ending hash processor {0}", tid);
+
                         if (send_close)
                             await self.ProgressChannel.WriteAsync(new ProgressEvent() { Filepath = e.Path, Length = filesize, Type = EventType.FileClosed });
+
+                        Console.WriteLine("Hash processor {0} - done", tid);
+
                     }
                 }
             }
