@@ -47,42 +47,59 @@ namespace Duplicati.Library.Main.Operation.Backup
                 var blocksize = options.Blocksize;
                 var log = new LogWrapper(self.LogChannel);
 
-                while (true)
+                Console.WriteLine("Starting pre-processor");
+
+                try
                 {
-                    var e = await self.Input.ReadAsync();
-
-                    long filestatsize = -1;
-                    try
+                    while (true)
                     {
-                        filestatsize = snapshot.GetFileSize(e.Path);
-                    }
-                    catch
-                    {
-                    }
+                        var e = await self.Input.ReadAsync();
 
-                    await stats.AddExaminedFile(filestatsize);
+                        Console.WriteLine("Processing file: {0}", e.Path);
 
-                    e.MetaHashAndSize = options.StoreMetadata ? Utility.WrapMetadata(await MetadataGenerator.GenerateMetadataAsync(e.Path, e.Attributes, options, snapshot, log), options) : EMPTY_METADATA;
+                        long filestatsize = -1;
+                        try
+                        {
+                            filestatsize = snapshot.GetFileSize(e.Path);
+                        }
+                        catch
+                        {
+                        }
 
-                    var timestampChanged = e.LastWrite != e.OldModified || e.LastWrite.Ticks == 0 || e.OldModified.Ticks == 0;
-                    var filesizeChanged = filestatsize < 0 || e.LastFileSize < 0 || filestatsize != e.LastFileSize;
-                    var tooLargeFile = options.SkipFilesLargerThan != long.MaxValue && options.SkipFilesLargerThan != 0 && filestatsize >= 0 && filestatsize > options.SkipFilesLargerThan;
-                    e.MetadataChanged = !options.SkipMetadata && (e.MetaHashAndSize.Size != e.OldMetaSize || e.MetaHashAndSize.Hash != e.OldMetaHash);
+                        await stats.AddExaminedFile(filestatsize);
 
-                    if ((e.OldId < 0 || options.DisableFiletimeCheck || timestampChanged || filesizeChanged || e.MetadataChanged) && !tooLargeFile)
-                    {
-                        await log.WriteVerboseAsync("Checking file for changes {0}, new: {1}, timestamp changed: {2}, size changed: {3}, metadatachanged: {4}, {5} vs {6}", e.Path, e.OldId <= 0, timestampChanged, filesizeChanged, e.MetadataChanged, e.LastWrite, e.OldModified);
-                        await self.Output.WriteAsync(e);
-                    }
-                    else
-                    {
-                        if (options.SkipFilesLargerThan == long.MaxValue || options.SkipFilesLargerThan == 0 || snapshot.GetFileSize(e.Path) < options.SkipFilesLargerThan)
-                            await log.WriteVerboseAsync("Skipped checking file, because timestamp was not updated {0}", e.Path);
+                        e.MetaHashAndSize = options.StoreMetadata ? Utility.WrapMetadata(await MetadataGenerator.GenerateMetadataAsync(e.Path, e.Attributes, options, snapshot, log), options) : EMPTY_METADATA;
+
+                        var timestampChanged = e.LastWrite != e.OldModified || e.LastWrite.Ticks == 0 || e.OldModified.Ticks == 0;
+                        var filesizeChanged = filestatsize < 0 || e.LastFileSize < 0 || filestatsize != e.LastFileSize;
+                        var tooLargeFile = options.SkipFilesLargerThan != long.MaxValue && options.SkipFilesLargerThan != 0 && filestatsize >= 0 && filestatsize > options.SkipFilesLargerThan;
+                        e.MetadataChanged = !options.SkipMetadata && (e.MetaHashAndSize.Size != e.OldMetaSize || e.MetaHashAndSize.Hash != e.OldMetaHash);
+
+                        if ((e.OldId < 0 || options.DisableFiletimeCheck || timestampChanged || filesizeChanged || e.MetadataChanged) && !tooLargeFile)
+                        {
+                            await log.WriteVerboseAsync("Checking file for changes {0}, new: {1}, timestamp changed: {2}, size changed: {3}, metadatachanged: {4}, {5} vs {6}", e.Path, e.OldId <= 0, timestampChanged, filesizeChanged, e.MetadataChanged, e.LastWrite, e.OldModified);
+                            await self.Output.WriteAsync(e);
+                        }
                         else
-                            await log.WriteVerboseAsync("Skipped checking file, because the size exceeds limit {0}", e.Path);
+                        {
+                            if (options.SkipFilesLargerThan == long.MaxValue || options.SkipFilesLargerThan == 0 || snapshot.GetFileSize(e.Path) < options.SkipFilesLargerThan)
+                                await log.WriteVerboseAsync("Skipped checking file, because timestamp was not updated {0}", e.Path);
+                            else
+                                await log.WriteVerboseAsync("Skipped checking file, because the size exceeds limit {0}", e.Path);
 
-                        await database.AddUnmodifiedAsync(e.OldId, e.LastWrite);
+                            await database.AddUnmodifiedAsync(e.OldId, e.LastWrite);
+                        }
                     }
+
+                }
+                catch(RetiredException)
+                {
+                    Console.WriteLine("Done in pre-processor");
+                    throw;
+                }
+                finally
+                {
+                    Console.WriteLine("Quit pre-processor");
                 }
             });
         }

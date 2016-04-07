@@ -46,57 +46,68 @@ namespace Duplicati.Library.Main.Operation.Backup
                 var mixinqueue = new Queue<string>();
                 Duplicati.Library.Utility.IFilter enumeratefilter = emitfilter;
 
-                bool includes;
-                bool excludes;
-                Library.Utility.FilterExpression.AnalyzeFilters(emitfilter, out includes, out excludes);
-                if (includes && !excludes)
-                    enumeratefilter = Library.Utility.FilterExpression.Combine(emitfilter, new Duplicati.Library.Utility.FilterExpression("*" + System.IO.Path.DirectorySeparatorChar, true));
+                Console.WriteLine("Starting file lister");
 
-                // If we have a specific list, use that instead of enumerating the filesystem
-                IEnumerable<string> worklist;
-                if (changedfilelist != null && changedfilelist.Length > 0)
+                try
                 {
-                    worklist = changedfilelist.Where(x =>
+                    bool includes;
+                    bool excludes;
+                    Library.Utility.FilterExpression.AnalyzeFilters(emitfilter, out includes, out excludes);
+                    if (includes && !excludes)
+                        enumeratefilter = Library.Utility.FilterExpression.Combine(emitfilter, new Duplicati.Library.Utility.FilterExpression("*" + System.IO.Path.DirectorySeparatorChar, true));
+
+                    // If we have a specific list, use that instead of enumerating the filesystem
+                    IEnumerable<string> worklist;
+                    if (changedfilelist != null && changedfilelist.Length > 0)
                     {
-                        var fa = FileAttributes.Normal;
-                        try
+                        worklist = changedfilelist.Where(x =>
                         {
-                            fa = snapshot.GetAttributes(x);
-                        }
-                        catch
-                        {
-                        }
+                            var fa = FileAttributes.Normal;
+                            try
+                            {
+                                fa = snapshot.GetAttributes(x);
+                            }
+                            catch
+                            {
+                            }
 
-                        return AttributeFilterAsync(null, x, fa, snapshot, log, sourcefilter, hardlinkPolicy, symlinkPolicy, hardlinkmap, attributeFilter, enumeratefilter, mixinqueue).WaitForTask().Result;
-                    });
-                }
-                else
-                {
-                    worklist = snapshot.EnumerateFilesAndFolders((root, path, attr) => {
-                        return AttributeFilterAsync(root, path, attr, snapshot, log, sourcefilter, hardlinkPolicy, symlinkPolicy, hardlinkmap, attributeFilter, enumeratefilter, mixinqueue).WaitForTask().Result;                        
-                    });
-                }
+                            return AttributeFilterAsync(null, x, fa, snapshot, log, sourcefilter, hardlinkPolicy, symlinkPolicy, hardlinkmap, attributeFilter, enumeratefilter, mixinqueue).WaitForTask().Result;
+                        });
+                    }
+                    else
+                    {
+                        worklist = snapshot.EnumerateFilesAndFolders((root, path, attr) => {
+                            return AttributeFilterAsync(root, path, attr, snapshot, log, sourcefilter, hardlinkPolicy, symlinkPolicy, hardlinkmap, attributeFilter, enumeratefilter, mixinqueue).WaitForTask().Result;                        
+                        });
+                    }
 
 
-                // Process each path, and dequeue the mixins with symlinks as we go
-                foreach(var s in worklist)
-                {
-                    if (!await taskreader.ProgressAsync)
-                        return;
-                    
+                    // Process each path, and dequeue the mixins with symlinks as we go
+                    foreach(var s in worklist)
+                    {
+                        if (!await taskreader.ProgressAsync)
+                            return;
+                        
+                        while (mixinqueue.Count > 0)
+                            await self.Output.WriteAsync(mixinqueue.Dequeue());
+
+                        Library.Utility.IFilter m;
+                        if (emitfilter != enumeratefilter && !Library.Utility.FilterExpression.Matches(emitfilter, s, out m))
+                            continue;
+
+                        await self.Output.WriteAsync(s);
+                    }
+
+                    // Trailing symlinks are caught here
                     while (mixinqueue.Count > 0)
                         await self.Output.WriteAsync(mixinqueue.Dequeue());
 
-                    Library.Utility.IFilter m;
-                    if (emitfilter != enumeratefilter && !Library.Utility.FilterExpression.Matches(emitfilter, s, out m))
-                        continue;
-
-                    await self.Output.WriteAsync(s);
+                    Console.WriteLine("Done in file lister");
                 }
-
-                // Trailing symlinks are caught here
-                while (mixinqueue.Count > 0)
-                    await self.Output.WriteAsync(mixinqueue.Dequeue());
+                finally
+                {
+                    Console.WriteLine("Quit file lister");
+                }
             });
         }
 
