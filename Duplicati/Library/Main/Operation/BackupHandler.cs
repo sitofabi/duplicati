@@ -162,8 +162,11 @@ namespace Duplicati.Library.Main.Operation
                         )
                     );
                 }
-
+                var pr = periodicReporter();
                 await all;
+
+                ct.Cancel();
+                await pr;
 
                 Console.WriteLine("Completed all operations, task state is {0}", all.Status);
 
