@@ -55,7 +55,8 @@ namespace Duplicati.Library.Main.Operation.Backup
                     {
                         var e = await self.Input.ReadAsync();
 
-                        Console.WriteLine("Processing file: {0}", e.Path);
+                        if (!e.Path.Contains(".DS_Store"))
+                            Console.WriteLine("Processing file: {0}", e.Path);
 
                         long filestatsize = -1;
                         try
