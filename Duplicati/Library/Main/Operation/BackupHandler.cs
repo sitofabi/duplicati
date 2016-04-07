@@ -104,6 +104,40 @@ namespace Duplicati.Library.Main.Operation
 
                 Console.WriteLine("Starting {0} hashers and {1} compressors", options.ConcurrencyBlockHashers, options.ConcurrencyCompressors);
 
+                Backup.DataBlockProcessor._ActiveBlockCount = Backup.DataBlockProcessor._BlockCount = Backup.DataBlockProcessor._ThreadId = 0;
+                Backup.FileBlockProcessor._ActiveBlockCount = Backup.FileBlockProcessor._BlockCount = Backup.FileBlockProcessor._ThreadId = 0;
+                Backup.FileEnumerationProcess._FilesForwarded = Backup.FileEnumerationProcess._FilesProcessed = 0;
+                Backup.FilePreFilterProcess._FilesProcessed = 0;
+                Backup.MetadataPreProcess._FilesProcessed = 0;
+
+                var ct = new System.Threading.CancellationTokenSource();
+                Func<Task> periodicReporter = async () =>
+                {
+                    var bc = Backup.FileBlockProcessor._BlockCount;
+
+                    while (!ct.IsCancellationRequested)
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(1));
+
+                        Console.WriteLine("DataBlockProcessor is {0},{1},{2}", Backup.DataBlockProcessor._ActiveBlockCount, Backup.DataBlockProcessor._BlockCount, Backup.DataBlockProcessor._ThreadId);
+                        Console.WriteLine("FileBlockProcessor is {0},{1},{2}", Backup.FileBlockProcessor._ActiveBlockCount, Backup.FileBlockProcessor._BlockCount, Backup.FileBlockProcessor._ThreadId);
+                        Console.WriteLine("FileEnumerationProcess is {0},{1}", Backup.FileEnumerationProcess._FilesForwarded, Backup.FileEnumerationProcess._FilesProcessed);
+
+                        Console.WriteLine("File/Meta is {0},{1}", Backup.FilePreFilterProcess._FilesProcessed, Backup.MetadataPreProcess._FilesProcessed);
+
+                        if (bc == Backup.FileBlockProcessor._BlockCount)
+                        {
+                            Console.WriteLine("Potential stall detected: {0}");
+                            var cp = new Dictionary<long,long>(Backup.FileBlockProcessor._Pos);
+                            foreach(var k in cp.Keys.OrderBy(x => x))
+                                Console.WriteLine("  {0}: {1}", k, cp[k]);
+                        }
+
+                        bc = Backup.FileBlockProcessor._BlockCount;
+                    }
+                };
+
+
                 Task all;
                 using(new ChannelScope())
                 {

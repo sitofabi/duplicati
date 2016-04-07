@@ -31,6 +31,9 @@ namespace Duplicati.Library.Main.Operation.Backup
     /// </summary>
     internal static class FileEnumerationProcess 
     {
+        public static long _FilesProcessed = 0;
+        public static long _FilesForwarded = 0;
+
         public static Task Run(Snapshots.ISnapshotService snapshot, FileAttributes attributeFilter, Duplicati.Library.Utility.IFilter sourcefilter, Duplicati.Library.Utility.IFilter emitfilter, Options.SymlinkStrategy symlinkPolicy, Options.HardlinkStrategy hardlinkPolicy, string[] changedfilelist, Common.ITaskReader taskreader)
         {
             return AutomationExtensions.RunTask(
@@ -89,24 +92,31 @@ namespace Duplicati.Library.Main.Operation.Backup
                             return;
                         
                         while (mixinqueue.Count > 0)
+                        {
                             await self.Output.WriteAsync(mixinqueue.Dequeue());
+                            System.Threading.Interlocked.Increment(ref _FilesForwarded);
+                        }
 
                         Library.Utility.IFilter m;
                         if (emitfilter != enumeratefilter && !Library.Utility.FilterExpression.Matches(emitfilter, s, out m))
                             continue;
 
                         await self.Output.WriteAsync(s);
+                        System.Threading.Interlocked.Increment(ref _FilesForwarded);
                     }
 
                     // Trailing symlinks are caught here
                     while (mixinqueue.Count > 0)
+                    {
                         await self.Output.WriteAsync(mixinqueue.Dequeue());
+                        System.Threading.Interlocked.Increment(ref _FilesForwarded);
+                    }
 
                     Console.WriteLine("Done in file lister");
                 }
                 finally
                 {
-                    Console.WriteLine("Quit file lister");
+                    Console.WriteLine("Quit file lister, forwarded: {0}, processed: {1}", _FilesForwarded, _FilesProcessed);
                 }
             });
         }
@@ -121,6 +131,8 @@ namespace Duplicati.Library.Main.Operation.Backup
         /// <param name="attributes">The file or folder attributes.</param>
         private static async Task<bool> AttributeFilterAsync(string rootpath, string path, FileAttributes attributes, Snapshots.ISnapshotService snapshot, LogWrapper log, Library.Utility.IFilter sourcefilter, Options.HardlinkStrategy hardlinkPolicy, Options.SymlinkStrategy symlinkPolicy, Dictionary<string, string> hardlinkmap, FileAttributes attributeFilter, Duplicati.Library.Utility.IFilter enumeratefilter, Queue<string> mixinqueue)
         {
+            System.Threading.Interlocked.Increment(ref _FilesProcessed);
+
             // Step 1, exclude block devices
             try
             {

@@ -50,6 +50,8 @@ namespace Duplicati.Library.Main.Operation.Backup
             public IMetahash MetaHashAndSize;
             public bool MetadataChanged;
         }
+
+        public static long _FilesProcessed = 0;
             
         public static Task Run(Snapshots.ISnapshotService snapshot, Options options, BackupDatabase database)
         {
@@ -67,53 +69,66 @@ namespace Duplicati.Library.Main.Operation.Backup
                 var emptymetadata = Utility.WrapMetadata(new Dictionary<string, string>(), options);
                 var blocksize = options.Blocksize;
 
-                while (true)
+                Console.WriteLine("Started metadata processor");
+
+                try
                 {
-                    var path = await self.Input.ReadAsync();
-
-                    var lastwrite = new DateTime(0, DateTimeKind.Utc);
-                    var attributes = default(FileAttributes);
-                    try 
-                    { 
-                        lastwrite = snapshot.GetLastWriteTimeUtc(path); 
-                    }
-                    catch (Exception ex) 
+                    while (true)
                     {
-                        await log.WriteWarningAsync(string.Format("Failed to read timestamp on \"{0}\"", path), ex);
-                    }
+                        var path = await self.Input.ReadAsync();
+                        System.Threading.Interlocked.Increment(ref _FilesProcessed);
 
-                    try 
-                    { 
-                        attributes = snapshot.GetAttributes(path); 
-                    }
-                    catch (Exception ex) 
-                    {
-                        await log.WriteWarningAsync(string.Format("Failed to read attributes on \"{0}\"", path), ex);
-                    }
-
-                    // If we only have metadata, stop here
-                    if (await ProcessMetadata(path, attributes, lastwrite, options, log, snapshot, emptymetadata, blocksize, database, self.BlockOutput))
-                    {
-                        try
-                        {
-                            var res = await database.GetFileEntryAsync(path);
-
-                            await self.Output.WriteAsync(new FileEntry() {
-                                OldId = res == null ? -1 : res.id,
-                                Path = path,
-                                Attributes = attributes,
-                                LastWrite = lastwrite,
-                                OldModified = res == null ? new DateTime(0) : res.modified,
-                                LastFileSize = res == null ? -1 : res.filesize,
-                                OldMetaHash = res == null ? null : res.metahash,
-                                OldMetaSize = res == null ? -1 : res.metasize
-                            });
+                        var lastwrite = new DateTime(0, DateTimeKind.Utc);
+                        var attributes = default(FileAttributes);
+                        try 
+                        { 
+                            lastwrite = snapshot.GetLastWriteTimeUtc(path); 
                         }
-                        catch(Exception ex)
+                        catch (Exception ex) 
                         {
-                            await log.WriteErrorAsync(string.Format("Failed to process entry, path: {0}", path), ex);
+                            await log.WriteWarningAsync(string.Format("Failed to read timestamp on \"{0}\"", path), ex);
+                        }
+
+                        try 
+                        { 
+                            attributes = snapshot.GetAttributes(path); 
+                        }
+                        catch (Exception ex) 
+                        {
+                            await log.WriteWarningAsync(string.Format("Failed to read attributes on \"{0}\"", path), ex);
+                        }
+
+                        // If we only have metadata, stop here
+                        if (await ProcessMetadata(path, attributes, lastwrite, options, log, snapshot, emptymetadata, blocksize, database, self.BlockOutput))
+                        {
+                            try
+                            {
+                                var res = await database.GetFileEntryAsync(path);
+
+                                await self.Output.WriteAsync(new FileEntry() {
+                                    OldId = res == null ? -1 : res.id,
+                                    Path = path,
+                                    Attributes = attributes,
+                                    LastWrite = lastwrite,
+                                    OldModified = res == null ? new DateTime(0) : res.modified,
+                                    LastFileSize = res == null ? -1 : res.filesize,
+                                    OldMetaHash = res == null ? null : res.metahash,
+                                    OldMetaSize = res == null ? -1 : res.metasize
+                                });
+                            }
+                            catch(Exception ex)
+                            {
+                                await log.WriteErrorAsync(string.Format("Failed to process entry, path: {0}", path), ex);
+                            }
                         }
                     }
+
+                    Console.WriteLine("Done with metadata processor");
+
+                }
+                finally
+                {
+                    Console.WriteLine("Quiting metadata processor, processed: {0}", _FilesProcessed);
                 }
 
             });

@@ -30,6 +30,8 @@ namespace Duplicati.Library.Main.Operation.Backup
     /// </summary>
     internal static class FilePreFilterProcess
     {
+        public static long _FilesProcessed = 0;
+
         public static Task Run(Snapshots.ISnapshotService snapshot, Options options, BackupStatsCollector stats, BackupDatabase database)
         {
             return AutomationExtensions.RunTask(
@@ -55,8 +57,7 @@ namespace Duplicati.Library.Main.Operation.Backup
                     {
                         var e = await self.Input.ReadAsync();
 
-                        if (!e.Path.Contains(".DS_Store") && !e.Path.Contains("Icons"))
-                            Console.WriteLine("Processing file: {0}", e.Path);
+                        System.Threading.Interlocked.Increment(ref _FilesProcessed);
 
                         long filestatsize = -1;
                         try
@@ -100,7 +101,7 @@ namespace Duplicati.Library.Main.Operation.Backup
                 }
                 finally
                 {
-                    Console.WriteLine("Quit pre-processor");
+                    Console.WriteLine("Quit pre-processor, files processed: {0}", _FilesProcessed);
                 }
             });
         }

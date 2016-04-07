@@ -32,7 +32,9 @@ namespace Duplicati.Library.Main.Operation.Backup
     /// </summary>
     internal static class DataBlockProcessor
     {
-        private static int _ThreadId = 0;
+        public static int _ThreadId = 0;
+        public static long _BlockCount = 0;
+        public static long _ActiveBlockCount = 0;
 
         public static Task Run(BackupDatabase database, Options options, ITaskReader taskreader)
         {
@@ -58,6 +60,9 @@ namespace Duplicati.Library.Main.Operation.Backup
                     while(true)
                     {
                         var b = await self.Input.ReadAsync();
+
+                        System.Threading.Interlocked.Increment(ref _BlockCount);
+                        System.Threading.Interlocked.Increment(ref _ActiveBlockCount);
 
                         // Lazy-start a new block volume
                         if (blockvolume == null)
@@ -103,6 +108,8 @@ namespace Duplicati.Library.Main.Operation.Backup
 
                         // We ignore the stop signal, but not the pause and terminate
                         await taskreader.ProgressAsync;
+
+                        System.Threading.Interlocked.Decrement(ref _ActiveBlockCount);
                     }
                 }
                 catch(Exception ex)
@@ -124,6 +131,11 @@ namespace Duplicati.Library.Main.Operation.Backup
                         Console.WriteLine("Crashed block processor {0} - {1}", tid, ex);
 
                     throw;
+                }
+                finally
+                {
+                    System.Threading.Interlocked.Decrement(ref _ThreadId);
+                    Console.WriteLine("Quit block processor {0}, active: {1}", tid, _ThreadId);
                 }
             });
         }
