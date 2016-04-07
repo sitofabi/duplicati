@@ -222,16 +222,18 @@ namespace Duplicati.Library.Main.Operation.Backup
                         {
                             System.Threading.Interlocked.Decrement(ref _ActiveBlockCount);
                             if (send_close)
-                            {
-                                Console.WriteLine("Sendclose hash processor {0}", tid);
                                 await self.ProgressChannel.WriteAsync(new ProgressEvent() { Filepath = e.Path, Length = filesize, Type = EventType.FileClosed });
-                            }
-
-                            Console.WriteLine("Hash processor {0} - done", tid);
 
                         }
 
                     }
+                }
+                catch(Exception ex)
+                {
+                    if (ex.IsRetiredException())
+                        Console.WriteLine("Hash processor {0} - done", tid);
+                    else
+                        Console.WriteLine("Hash processor {0} - crashed: {1}", tid, ex);
                 }
                 finally
                 {

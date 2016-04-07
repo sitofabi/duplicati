@@ -114,6 +114,7 @@ namespace Duplicati.Library.Main.Operation
                 Func<Task> periodicReporter = async () =>
                 {
                     var bc = Backup.FileBlockProcessor._BlockCount;
+                    var xc = Backup.DataBlockProcessor._BlockCount;
 
                     while (!ct.IsCancellationRequested)
                     {
@@ -133,7 +134,16 @@ namespace Duplicati.Library.Main.Operation
                                 Console.WriteLine("  {0}: {1}", k, cp[k]);
                         }
 
+                        if (xc == Backup.DataBlockProcessor._BlockCount)
+                        {
+                            Console.WriteLine("Potential stall detected: {0}");
+                            var cp = new Dictionary<long,long>(Backup.DataBlockProcessor._Pos);
+                            foreach(var k in cp.Keys.OrderBy(x => x))
+                                Console.WriteLine("  {0}: {1}", k, cp[k]);
+                        }
+
                         bc = Backup.FileBlockProcessor._BlockCount;
+                        xc = Backup.DataBlockProcessor._BlockCount;
                     }
                 };
 

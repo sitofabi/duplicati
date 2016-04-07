@@ -22,6 +22,7 @@ using Duplicati.Library.Main.Volumes;
 using Duplicati.Library.Main.Operation.Common;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace Duplicati.Library.Main.Operation.Backup
 {
@@ -35,6 +36,7 @@ namespace Duplicati.Library.Main.Operation.Backup
         public static int _ThreadId = 0;
         public static long _BlockCount = 0;
         public static long _ActiveBlockCount = 0;
+        public static Dictionary<long, long> _Pos = new Dictionary<long, long>();
 
         public static Task Run(BackupDatabase database, Options options, ITaskReader taskreader)
         {
@@ -59,7 +61,9 @@ namespace Duplicati.Library.Main.Operation.Backup
                 {
                     while(true)
                     {
+                        _Pos[tid] = 0;
                         var b = await self.Input.ReadAsync();
+                        _Pos[tid] = 1;
 
                         System.Threading.Interlocked.Increment(ref _BlockCount);
                         System.Threading.Interlocked.Increment(ref _ActiveBlockCount);
@@ -72,21 +76,27 @@ namespace Duplicati.Library.Main.Operation.Backup
                             // There can be a race, such that two workers determine that
                             // the block is missing, but this will be solved by the AddBlock call
                             // which runs atomically
+                            _Pos[tid] = 2;
                             if (await database.FindBlockIDAsync(b.HashKey, b.Size) >= 0)
                             {
+                                _Pos[tid] = 3;
                                 b.TaskCompletion.TrySetResult(false);
+                                System.Threading.Interlocked.Increment(ref _ActiveBlockCount);
                                 continue;
                             }
 
+                            _Pos[tid] = 4;
                             blockvolume = new BlockVolumeWriter(options);
                             blockvolume.VolumeID = await database.RegisterRemoteVolumeAsync(blockvolume.RemoteFilename, RemoteVolumeType.Blocks, RemoteVolumeState.Temporary);
                         }
 
+                        _Pos[tid] = 5;
                         var newBlock = await database.AddBlockAsync(b.HashKey, b.Size, blockvolume.VolumeID);
                         b.TaskCompletion.TrySetResult(newBlock);
 
                         if (newBlock)
                         {
+                            _Pos[tid] = 6;
                             blockvolume.AddBlock(b.HashKey, b.Data, b.Offset, (int)b.Size, b.Hint);
 
                             // If the volume is full, send to upload
@@ -94,22 +104,26 @@ namespace Duplicati.Library.Main.Operation.Backup
                             {
                                 //When uploading a new volume, we register the volumes and then flush the transaction
                                 // this ensures that the local database and remote storage are as closely related as possible
+                                _Pos[tid] = 7;
                                 await database.UpdateRemoteVolumeAsync(blockvolume.RemoteFilename, RemoteVolumeState.Uploading, -1, null);
                             
                                 blockvolume.Close();
 
+                                _Pos[tid] = 8;
                                 await database.CommitTransactionAsync("CommitAddBlockToOutputFlush");
 
+                                _Pos[tid] = 9;
                                 await self.Output.WriteAsync(new VolumeUploadRequest(blockvolume, true));
                                 blockvolume = null;
                             }
 
                         }
 
+                        _Pos[tid] = 10;
+                        System.Threading.Interlocked.Decrement(ref _ActiveBlockCount);
+
                         // We ignore the stop signal, but not the pause and terminate
                         await taskreader.ProgressAsync;
-
-                        System.Threading.Interlocked.Decrement(ref _ActiveBlockCount);
                     }
                 }
                 catch(Exception ex)
