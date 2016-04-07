@@ -57,178 +57,186 @@ namespace Duplicati.Library.Main.Operation.Backup
 
                 Console.WriteLine("Started hash processor {0}", tid);
 
-                while (await taskreader.ProgressAsync)
+                try
                 {
-                    _Pos[tid] = 0;
-                    var e = await self.Input.ReadAsync();
-                    var send_close = false;
-                    var filesize = 0L;
-
-                    System.Threading.Interlocked.Increment(ref _BlockCount);
-                    System.Threading.Interlocked.Increment(ref _ActiveBlockCount);
-
-                    try
+                    while (await taskreader.ProgressAsync)
                     {
-                        _Pos[tid] = 1;
-                        var hint = options.GetCompressionHintFromFilename(e.Path);
-                        var oldHash = e.OldId < 0 ? null : await database.GetFileHashAsync(e.OldId);
-                    
-                        using(var blocklisthashes = new Library.Utility.FileBackedStringList())
-                        using(var hashcollector = new Library.Utility.FileBackedStringList())
-                        {    
-                            var blocklistbuffer = new byte[blocksize];
-                            var blocklistoffset = 0L;
+                        _Pos[tid] = 0;
+                        var e = await self.Input.ReadAsync();
+                        var send_close = false;
+                        var filesize = 0L;
 
-                            using(var fs = snapshot.OpenRead(e.Path))
-                            {
-                                _Pos[tid] = 2;
-                                long fslen = -1;
-                                try { fslen = fs.Length; }
-                                catch (Exception ex) { await log.WriteWarningAsync(string.Format("Failed to read file length for file {0}", e.Path), ex); }
+                        System.Threading.Interlocked.Increment(ref _BlockCount);
+                        System.Threading.Interlocked.Increment(ref _ActiveBlockCount);
 
-                                _Pos[tid] = 3;
-                                await self.ProgressChannel.WriteAsync(new ProgressEvent() { Filepath = e.Path, Length = fslen, Type = EventType.FileStarted });
-                                send_close = true;
+                        try
+                        {
+                            _Pos[tid] = 1;
+                            var hint = options.GetCompressionHintFromFilename(e.Path);
+                            var oldHash = e.OldId < 0 ? null : await database.GetFileHashAsync(e.OldId);
+                        
+                            using(var blocklisthashes = new Library.Utility.FileBackedStringList())
+                            using(var hashcollector = new Library.Utility.FileBackedStringList())
+                            {    
+                                var blocklistbuffer = new byte[blocksize];
+                                var blocklistoffset = 0L;
 
-                                filehasher.Initialize();
-                                var lastread = 0;
-                                var buf = new byte[blocksize];
-                                var lastupdate = DateTime.Now;
-                                var firstBlock = true;
-
-                                // Core processing loop, read blocks of data and hash individually
-                                _Pos[tid] = 4;
-                                while(((lastread = await fs.ForceStreamReadAsync(buf, blocksize)) != 0) || firstBlock)
+                                using(var fs = snapshot.OpenRead(e.Path))
                                 {
-                                    firstBlock = false;
+                                    _Pos[tid] = 2;
+                                    long fslen = -1;
+                                    try { fslen = fs.Length; }
+                                    catch (Exception ex) { await log.WriteWarningAsync(string.Format("Failed to read file length for file {0}", e.Path), ex); }
 
-                                    _Pos[tid] = 5;
-                                    // Run file hashing concurrently to squeeze a little extra concurrency out of it
-                                    var pftask = Task.Run(() => filehasher.TransformBlock(buf, 0, lastread, buf, 0));
+                                    _Pos[tid] = 3;
+                                    await self.ProgressChannel.WriteAsync(new ProgressEvent() { Filepath = e.Path, Length = fslen, Type = EventType.FileStarted });
+                                    send_close = true;
 
-                                    var hashdata = blockhasher.ComputeHash(buf, 0, lastread);
-                                    var hashkey = Convert.ToBase64String(hashdata);
+                                    filehasher.Initialize();
+                                    var lastread = 0;
+                                    var buf = new byte[blocksize];
+                                    var lastupdate = DateTime.Now;
+                                    var firstBlock = true;
 
-                                    // If we have too many hashes, flush the blocklist
-                                    _Pos[tid] = 6;
-                                    if (blocklistbuffer.Length - blocklistoffset < hashdata.Length)
+                                    // Core processing loop, read blocks of data and hash individually
+                                    _Pos[tid] = 4;
+                                    while(((lastread = await fs.ForceStreamReadAsync(buf, blocksize)) != 0) || firstBlock)
                                     {
-                                        var blkey = Convert.ToBase64String(blockhasher.ComputeHash(blocklistbuffer, 0, (int)blocklistoffset));
-                                        blocklisthashes.Add(blkey);
-                                        _Pos[tid] = 7;
-                                        await DataBlock.AddBlockToOutputAsync(self.BlockOutput, blkey, blocklistbuffer, 0, blocklistoffset, CompressionHint.Noncompressible, true);
-                                        blocklistoffset = 0;
-                                        blocklistbuffer = new byte[blocksize];
+                                        firstBlock = false;
+
+                                        _Pos[tid] = 5;
+                                        // Run file hashing concurrently to squeeze a little extra concurrency out of it
+                                        var pftask = Task.Run(() => filehasher.TransformBlock(buf, 0, lastread, buf, 0));
+
+                                        var hashdata = blockhasher.ComputeHash(buf, 0, lastread);
+                                        var hashkey = Convert.ToBase64String(hashdata);
+
+                                        // If we have too many hashes, flush the blocklist
+                                        _Pos[tid] = 6;
+                                        if (blocklistbuffer.Length - blocklistoffset < hashdata.Length)
+                                        {
+                                            var blkey = Convert.ToBase64String(blockhasher.ComputeHash(blocklistbuffer, 0, (int)blocklistoffset));
+                                            blocklisthashes.Add(blkey);
+                                            _Pos[tid] = 7;
+                                            await DataBlock.AddBlockToOutputAsync(self.BlockOutput, blkey, blocklistbuffer, 0, blocklistoffset, CompressionHint.Noncompressible, true);
+                                            blocklistoffset = 0;
+                                            blocklistbuffer = new byte[blocksize];
+                                        }
+
+                                        // Store the current hash in the blocklist
+                                        _Pos[tid] = 8;
+                                        Array.Copy(hashdata, 0, blocklistbuffer, blocklistoffset, hashdata.Length);
+                                        blocklistoffset += hashdata.Length;
+                                        hashcollector.Add(hashkey);
+                                        filesize += lastread;
+
+                                        // Don't spam updates
+                                        _Pos[tid] = 9;
+                                        if ((DateTime.Now - lastupdate).TotalSeconds > 10)
+                                        {
+                                            await self.ProgressChannel.WriteAsync(new ProgressEvent() { Filepath = e.Path, Length = filesize, Type = EventType.FileProgressUpdate });
+                                            lastupdate = DateTime.Now;
+                                        }
+
+                                        // Make sure the filehasher is done with the buf instance before we pass it on
+                                        _Pos[tid] = 10;
+                                        await pftask;
+                                        _Pos[tid] = 11;
+                                        await DataBlock.AddBlockToOutputAsync(self.BlockOutput, hashkey, buf, 0, lastread, hint, true);
+                                        buf = new byte[blocksize];
+                                        _Pos[tid] = 12;
+                                    }
+                                }
+
+                                // If we have more than a single block of data, output the (trailing) blocklist
+                                _Pos[tid] = 13;
+                                if (hashcollector.Count > 1)
+                                {
+                                    _Pos[tid] = 14;
+                                    var blkey = Convert.ToBase64String(blockhasher.ComputeHash(blocklistbuffer, 0, (int)blocklistoffset));
+                                    blocklisthashes.Add(blkey);
+                                    await DataBlock.AddBlockToOutputAsync(self.BlockOutput, blkey, blocklistbuffer, 0, blocklistoffset, CompressionHint.Noncompressible, true);
+                                }
+
+                                _Pos[tid] = 15;
+                                await stats.AddOpenedFile(filesize);
+                                filehasher.TransformFinalBlock(new byte[0], 0, 0);
+
+                                _Pos[tid] = 16;
+                                var filekey = Convert.ToBase64String(filehasher.Hash);
+                                if (oldHash != filekey)
+                                {
+                                    _Pos[tid] = 17;
+                                    if (oldHash == null)
+                                        await log.WriteVerboseAsync("New file {0}", e.Path);
+                                    else
+                                        await log.WriteVerboseAsync("File has changed {0}", e.Path);
+
+                                    if (e.OldId < 0)
+                                    {
+                                        _Pos[tid] = 18;
+                                        await stats.AddAddedFile(filesize);
+
+                                        if (options.Dryrun)
+                                            await log.WriteDryRunAsync("Would add new file {0}, size {1}", e.Path, Library.Utility.Utility.FormatSizeString(filesize));
+                                    }
+                                    else
+                                    {
+                                        _Pos[tid] = 19;
+                                        await stats.AddModifiedFile(filesize);
+
+                                        if (options.Dryrun)
+                                            await log.WriteDryRunAsync("Would add changed file {0}, size {1}", e.Path, Library.Utility.Utility.FormatSizeString(filesize));
                                     }
 
-                                    // Store the current hash in the blocklist
-                                    _Pos[tid] = 8;
-                                    Array.Copy(hashdata, 0, blocklistbuffer, blocklistoffset, hashdata.Length);
-                                    blocklistoffset += hashdata.Length;
-                                    hashcollector.Add(hashkey);
-                                    filesize += lastread;
-
-                                    // Don't spam updates
-                                    _Pos[tid] = 9;
-                                    if ((DateTime.Now - lastupdate).TotalSeconds > 10)
-                                    {
-                                        await self.ProgressChannel.WriteAsync(new ProgressEvent() { Filepath = e.Path, Length = filesize, Type = EventType.FileProgressUpdate });
-                                        lastupdate = DateTime.Now;
-                                    }
-
-                                    // Make sure the filehasher is done with the buf instance before we pass it on
-                                    _Pos[tid] = 10;
-                                    await pftask;
-                                    _Pos[tid] = 11;
-                                    await DataBlock.AddBlockToOutputAsync(self.BlockOutput, hashkey, buf, 0, lastread, hint, true);
-                                    buf = new byte[blocksize];
-                                    _Pos[tid] = 12;
+                                    await AddFileToOutputAsync(e.Path, filesize, e.LastWrite, e.MetaHashAndSize, hashcollector, filekey, blocklisthashes, self.BlockOutput, blocksize, database);
                                 }
-                            }
-
-                            // If we have more than a single block of data, output the (trailing) blocklist
-                            _Pos[tid] = 13;
-                            if (hashcollector.Count > 1)
-                            {
-                                _Pos[tid] = 14;
-                                var blkey = Convert.ToBase64String(blockhasher.ComputeHash(blocklistbuffer, 0, (int)blocklistoffset));
-                                blocklisthashes.Add(blkey);
-                                await DataBlock.AddBlockToOutputAsync(self.BlockOutput, blkey, blocklistbuffer, 0, blocklistoffset, CompressionHint.Noncompressible, true);
-                            }
-
-                            _Pos[tid] = 15;
-                            await stats.AddOpenedFile(filesize);
-                            filehasher.TransformFinalBlock(new byte[0], 0, 0);
-
-                            _Pos[tid] = 16;
-                            var filekey = Convert.ToBase64String(filehasher.Hash);
-                            if (oldHash != filekey)
-                            {
-                                _Pos[tid] = 17;
-                                if (oldHash == null)
-                                    await log.WriteVerboseAsync("New file {0}", e.Path);
-                                else
-                                    await log.WriteVerboseAsync("File has changed {0}", e.Path);
-
-                                if (e.OldId < 0)
+                                else if (e.MetadataChanged)
                                 {
-                                    _Pos[tid] = 18;
-                                    await stats.AddAddedFile(filesize);
-
-                                    if (options.Dryrun)
-                                        await log.WriteDryRunAsync("Would add new file {0}, size {1}", e.Path, Library.Utility.Utility.FormatSizeString(filesize));
+                                    _Pos[tid] = 20;
+                                    await log.WriteVerboseAsync("File has only metadata changes {0}", e.Path);
+                                    await AddFileToOutputAsync(e.Path, filesize, e.LastWrite, e.MetaHashAndSize, hashcollector, filekey, blocklisthashes, self.BlockOutput, blocksize, database);
                                 }
                                 else
                                 {
-                                    _Pos[tid] = 19;
-                                    await stats.AddModifiedFile(filesize);
-
-                                    if (options.Dryrun)
-                                        await log.WriteDryRunAsync("Would add changed file {0}, size {1}", e.Path, Library.Utility.Utility.FormatSizeString(filesize));
+                                    // When we write the file to output, update the last modified time
+                                    _Pos[tid] = 21;
+                                    await log.WriteVerboseAsync("File has not changed {0}", e.Path);
+                                    await database.AddUnmodifiedAsync(e.OldId, e.LastWrite);
                                 }
+                                _Pos[tid] = 22;
+                            }
 
-                                await AddFileToOutputAsync(e.Path, filesize, e.LastWrite, e.MetaHashAndSize, hashcollector, filekey, blocklisthashes, self.BlockOutput, blocksize, database);
-                            }
-                            else if (e.MetadataChanged)
-                            {
-                                _Pos[tid] = 20;
-                                await log.WriteVerboseAsync("File has only metadata changes {0}", e.Path);
-                                await AddFileToOutputAsync(e.Path, filesize, e.LastWrite, e.MetaHashAndSize, hashcollector, filekey, blocklisthashes, self.BlockOutput, blocksize, database);
-                            }
+
+                        }
+                        catch(Exception ex)
+                        {
+                            Console.WriteLine("Stopped hash processor {0} - {1}", tid, ex);
+
+                            if (ex.IsRetiredException())
+                                return;
                             else
+                                await log.WriteWarningAsync(string.Format("Failed to process file {0}", e.Path), ex);
+                        }
+                        finally
+                        {
+                            System.Threading.Interlocked.Decrement(ref _ActiveBlockCount);
+                            if (send_close)
                             {
-                                // When we write the file to output, update the last modified time
-                                _Pos[tid] = 21;
-                                await log.WriteVerboseAsync("File has not changed {0}", e.Path);
-                                await database.AddUnmodifiedAsync(e.OldId, e.LastWrite);
+                                Console.WriteLine("Sendclose hash processor {0}", tid);
+                                await self.ProgressChannel.WriteAsync(new ProgressEvent() { Filepath = e.Path, Length = filesize, Type = EventType.FileClosed });
                             }
-                            _Pos[tid] = 22;
+
+                            Console.WriteLine("Hash processor {0} - done", tid);
+
                         }
 
-
                     }
-                    catch(Exception ex)
-                    {
-                        Console.WriteLine("Stopped hash processor {0} - {1}", tid, ex);
-
-                        if (ex.IsRetiredException())
-                            return;
-                        else
-                            await log.WriteWarningAsync(string.Format("Failed to process file {0}", e.Path), ex);
-                    }
-                    finally
-                    {
-                        System.Threading.Interlocked.Increment(ref _ActiveBlockCount);
-                        System.Threading.Interlocked.Decrement(ref _ThreadId);
-                        Console.WriteLine("Ending hash processor {0}, alive: {1}", tid, _ThreadId);
-
-                        if (send_close)
-                            await self.ProgressChannel.WriteAsync(new ProgressEvent() { Filepath = e.Path, Length = filesize, Type = EventType.FileClosed });
-
-                        Console.WriteLine("Hash processor {0} - done", tid);
-
-                    }
-
+                }
+                finally
+                {
+                    System.Threading.Interlocked.Decrement(ref _ThreadId);
+                    Console.WriteLine("Ending hash processor {0}, alive: {1}", tid, _ThreadId);
                 }
             }
             );
