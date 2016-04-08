@@ -62,7 +62,7 @@ namespace Duplicati.Library.Main.Operation.Backup
                     while(true)
                     {
                         _Pos[tid] = 0;
-                        var b = await self.Input.ReadAsync(TimeSpan.FromMinutes(10));
+                        var b = await self.Input.ReadAsync(TimeSpan.FromMinutes(5));
                         _Pos[tid] = 1;
 
                         System.Threading.Interlocked.Increment(ref _BlockCount);
