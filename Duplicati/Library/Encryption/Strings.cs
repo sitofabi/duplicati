@@ -29,6 +29,8 @@ namespace Duplicati.Library.Encryption.Strings {
         public static string GpgencryptiondecryptioncommandShort { get { return LC.L(@"The GPG decryption command"); } }
         public static string GpgencryptionencryptioncommandLong(string commandname, string optionvalue) { return LC.L(@"Overrides the default GPG encryption command ""{0}"", normal usage is to request asymetric encryption with the setting {1}", commandname, optionvalue); }
         public static string GpgencryptionencryptioncommandShort { get { return LC.L(@"The GPG encryption command"); } }
+        public static string GpgencryptionaskforpassLong { get { return LC.L(@"Use this option to use a second password for decryption of gpg archives."); } }
+        public static string GpgencryptionaskforpassShort { get { return LC.L(@"Ask for the gpg password."); } }
     }
     internal static class GPGStreamWrapper {
         public static string DecryptionError(string message) { return LC.L(@"Decryption failed: {0}", message); }

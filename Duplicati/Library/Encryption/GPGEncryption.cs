@@ -59,6 +59,10 @@ namespace Duplicati.Library.Encryption
         /// The commandline option that changes the default encryption command (--gpg-decryption-command)
         /// </summary>
         private const string COMMANDLINE_OPTIONS_DECRYPTION_COMMAND = "gpg-decryption-command";
+        /// <summary>
+        /// The commandline option that indicates that there should be used a different password for gpg decryption (--gpg-ask-password)
+        /// </summary>
+        private const string COMMANDLINE_OPTIONS_ASK_FOR_PASS_COMMAND = "gpg-ask-password";
         #endregion
 
         /// <summary>
@@ -180,6 +184,16 @@ namespace Duplicati.Library.Encryption
             if (options.ContainsKey(COMMANDLINE_OPTIONS_PATH))
                 m_programpath = Library.Utility.Utility.ExpandEnvironmentVariables(options[COMMANDLINE_OPTIONS_PATH]);
 
+            if (options.ContainsKey(COMMANDLINE_OPTIONS_ASK_FOR_PASS_COMMAND)) 
+            {
+                Console.WriteLine ("Inside ask password");
+
+                var askForPass = Utility.Utility.ParseBoolOption(options, COMMANDLINE_OPTIONS_ASK_FOR_PASS_COMMAND);
+                Console.WriteLine ("askForPass is set to:" + askForPass);
+                if (askForPass)
+                    askUserForPassword ();
+            }
+
         }
 
         #region IEncryption Members
@@ -206,6 +220,7 @@ namespace Duplicati.Library.Encryption
                 return new List<ICommandLineArgument>(new ICommandLineArgument[] {
                     new CommandLineArgument(COMMANDLINE_OPTIONS_DISABLE_ARMOR, CommandLineArgument.ArgumentType.Boolean, Strings.GPGEncryption.GpgencryptiondisablearmorShort, Strings.GPGEncryption.GpgencryptiondisablearmorLong, "true", null, null, Strings.GPGEncryption.Gpgencryptiondisablearmordeprecated(COMMANDLINE_OPTIONS_ENABLE_ARMOR)),
                     new CommandLineArgument(COMMANDLINE_OPTIONS_ENABLE_ARMOR, CommandLineArgument.ArgumentType.Boolean, Strings.GPGEncryption.GpgencryptionenablearmorShort, Strings.GPGEncryption.GpgencryptionenablearmorLong, "false"),
+                    new CommandLineArgument(COMMANDLINE_OPTIONS_ASK_FOR_PASS_COMMAND, CommandLineArgument.ArgumentType.Boolean, Strings.GPGEncryption.GpgencryptionaskforpassShort, Strings.GPGEncryption.GpgencryptionaskforpassLong,"false"),
                     new CommandLineArgument(COMMANDLINE_OPTIONS_ENCRYPTION_COMMAND , CommandLineArgument.ArgumentType.String, Strings.GPGEncryption.GpgencryptionencryptioncommandShort, Strings.GPGEncryption.GpgencryptionencryptioncommandLong(GPG_ENCRYPTION_COMMAND, "--encrypt"), GPG_ENCRYPTION_COMMAND),
                     new CommandLineArgument(COMMANDLINE_OPTIONS_DECRYPTION_COMMAND , CommandLineArgument.ArgumentType.String, Strings.GPGEncryption.GpgencryptiondecryptioncommandShort, Strings.GPGEncryption.GpgencryptiondecryptioncommandLong, GPG_DECRYPTION_COMMAND),
                     new CommandLineArgument(COMMANDLINE_OPTIONS_ENCRYPTION_OPTIONS , CommandLineArgument.ArgumentType.String, Strings.GPGEncryption.GpgencryptionencryptionswitchesShort, Strings.GPGEncryption.GpgencryptionencryptionswitchesLong, GPG_ENCRYPTION_DEFAULT_OPTIONS),
@@ -216,6 +231,35 @@ namespace Duplicati.Library.Encryption
         }
 
         #endregion
+
+        private void askUserForPassword()
+        {
+            Console.WriteLine ("Requested to overwrite the gpg password! Please type the password that should be used for gpg operations:");
+            var builder = new StringBuilder();
+            while (true)
+            {
+                ConsoleKeyInfo i = Console.ReadKey(true);
+                if (i.Key == ConsoleKey.Enter)
+                {
+                    break;
+                }
+                else if (i.Key == ConsoleKey.Backspace)
+                {
+                    if (builder.Length > 0)
+                    {
+                        builder.Remove(builder.Length - 1,1);
+                        Console.Write("\b \b");
+                    }
+                }
+                else
+                {
+                    builder.Append(i.KeyChar);
+                    Console.Write("*");
+                }
+            }
+            m_key = builder.ToString ();
+            //System.Console.WriteLine ("Using password for gpg:" + m_key);
+        }
         
         /// <summary>
         /// Internal helper that wraps GPG usage
@@ -238,8 +282,9 @@ namespace Duplicati.Library.Encryption
 #if DEBUG
             psi.CreateNoWindow = false;
             psi.WindowStyle = System.Diagnostics.ProcessWindowStyle.Normal;
-            Console.Error.WriteLine(string.Format("Running command: \"{0}\" {1}", m_programpath, args));
 #endif
+            Console.Error.WriteLine(string.Format("Running command: \"{0}\" {1}", m_programpath, args));
+
 
             System.Diagnostics.Process p;
 
