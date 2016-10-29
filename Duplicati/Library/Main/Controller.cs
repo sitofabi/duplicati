@@ -173,7 +173,7 @@ namespace Duplicati.Library.Main
             Library.UsageReporter.Reporter.Report("USE_BACKEND", new Library.Utility.Uri(m_backend).Scheme);
             Library.UsageReporter.Reporter.Report("USE_COMPRESSION", m_options.CompressionModule);
             Library.UsageReporter.Reporter.Report("USE_ENCRYPTION", m_options.EncryptionModule);
-
+            
             return RunAction(new BackupResults(), ref inputsources, ref filter, (result) => {
 
                 if (inputsources == null || inputsources.Length == 0)
@@ -344,8 +344,6 @@ namespace Duplicati.Library.Main
                 }
             });
         }
-
-
 
         public Duplicati.Library.Interface.ICompactResults Compact()
         {
@@ -598,7 +596,7 @@ namespace Duplicati.Library.Main
             // Make the filter read-n-write able in the generic modules
             var pristinefilter = conopts["filter"] = string.Join(System.IO.Path.PathSeparator.ToString(), FilterExpression.Serialize(filter));
 
-            foreach (KeyValuePair<bool, Library.Interface.IGenericModule> mx in m_options.LoadedModules)
+            foreach (var mx in m_options.LoadedModules)
                 if (mx.Key)
                 {
                     if (mx.Value is Library.Interface.IConnectionModule)
@@ -606,13 +604,21 @@ namespace Duplicati.Library.Main
                     else
                         mx.Value.Configure(m_options.RawOptions);
 
+                    if (mx.Value is Library.Interface.IGenericSourceModule)
+                    {
+                        var sourceoptions = ((Library.Interface.IGenericSourceModule)mx.Value).ParseSourcePaths(ref paths, ref pristinefilter, m_options.RawOptions);
+
+                        foreach (var sourceoption in sourceoptions)
+                            m_options.RawOptions[sourceoption.Key] = sourceoption.Value;
+                    }
+
                     if (mx.Value is Library.Interface.IGenericCallbackModule)
                         ((Library.Interface.IGenericCallbackModule)mx.Value).OnStart(result.MainOperation.ToString(), ref m_backend, ref paths);
                 }
 
             // If the filters were changed, read them back in
             if (pristinefilter != conopts["filter"])
-                filter = FilterExpression.Deserialize(conopts["filter"].Split(new string[] {System.IO.Path.PathSeparator.ToString()}, StringSplitOptions.RemoveEmptyEntries));
+                filter = FilterExpression.Deserialize(pristinefilter.Split(new string[] {System.IO.Path.PathSeparator.ToString()}, StringSplitOptions.RemoveEmptyEntries));
 
             OperationRunning(true);
 
@@ -715,7 +721,6 @@ namespace Duplicati.Library.Main
                     if (m.Key)
                         moduleOptions.AddRange(m.Value.SupportedCommands);
                     else
-                    {
                         foreach (Library.Interface.ICommandLineArgument c in m.Value.SupportedCommands)
                         {
                             disabledModuleOptions[c.Name] = m.Value.DisplayName + " (" + m.Value.Key + ")";
@@ -724,7 +729,6 @@ namespace Duplicati.Library.Main
                                 foreach (string s in c.Aliases)
                                     disabledModuleOptions[s] = disabledModuleOptions[c.Name];
                         }
-                    }
 
             // Throw url-encoded options into the mix
             //TODO: This can hide values if both commandline and url-parameters supply the same key
