@@ -148,6 +148,9 @@ backupApp.controller('EditBackupController', function ($scope, $routeParams, $lo
     };
 
     $scope.toggleArraySelection = function (lst, value) {
+        if (lst === null)
+          lst = [];
+
         var ix = lst.indexOf(value);
 
         if (ix > -1)
@@ -502,6 +505,8 @@ backupApp.controller('EditBackupController', function ($scope, $routeParams, $lo
             delete extopts[delopts[n]];
 
         $scope.ExtendedOptions = AppUtils.serializeAdvancedOptionsToArray(extopts);
+
+        $scope.showAdvanced = $scope.ExtendedOptions.length > 0;
 
         var now = new Date();
         if ($scope.Schedule != null) {

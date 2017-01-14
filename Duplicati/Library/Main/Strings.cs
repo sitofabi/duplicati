@@ -130,8 +130,8 @@ namespace Duplicati.Library.Main.Strings
         public static string CompressionextensionfileShort { get { return LC.L(@"Manage non-compressible file extensions"); } }
         public static string BlockhashlookupsizeLong { get { return LC.L(@"A fragment of memory is used to reduce database lookups. You should not change this value unless you get warnings in the log."); } }
         public static string BlockhashlookupsizeShort { get { return LC.L(@"Memory used by the block hash"); } }
-        public static string BlocksizeLong { get { return LC.L(@"The blocksize determines how files are fragmented. Choosing a large value will cause a larger overhead on file changes, choosing a small value will cause a large overhead on storage of file lists. Note that the value cannot be changed after remote files are created."); } }
-        public static string BlocksizeShort { get { return LC.L(@"Blocksize used in hashing"); } }
+        public static string BlocksizeLong { get { return LC.L(@"The block size determines how files are fragmented. Choosing a large value will cause a larger overhead on file changes, choosing a small value will cause a large overhead on storage of file lists. Note that the value cannot be changed after remote files are created."); } }
+        public static string BlocksizeShort { get { return LC.L(@"Block size used in hashing"); } }
         public static string ChangedfilesLong { get { return LC.L(@"This option can be used to limit the scan to only files that are known to have changed. This is usually only activated in combination with a filesystem watcher that keeps track of file changes."); } }
         public static string ChangedfilesShort { get { return LC.L(@"List of files to examine for changes"); } }
         public static string DbpathLong { get { return LC.L(@"Path to the file containing the local cache of the remote file database"); } }
@@ -214,6 +214,14 @@ namespace Duplicati.Library.Main.Strings
         public static string DisablepipingLong { get { return LC.L(@"Use this option to disable multithreaded handling of up- and downloads, that can significantly speed up backend operations depending on the hardware you're running on and the transfer rate of your backend."); } }
         public static string HypervbackupvmShort { get { return LC.L(@"Perform backup of Hyper-V machines (Windows only)"); } }
         public static string HypervbackupvmLong { get { return LC.L(@"Use this option to specify the IDs of machines to include in the backup. Specify multiple machine IDs with a semicolon separator. (You can use this Powershell command to get ID 'Get-VM | ft VMName, ID')"); } }
+        public static string DisablesyntehticfilelistLong { get { return LC.L(@"If Duplicati detects that the previous backup did not complete, it will generate a filelist that is a merge of the last completed backup and the contents that were uploaded in the incomplete backup session."); } }
+        public static string DisablesyntheticfilelistShort { get { return LC.L(@"Disables synethic filelist"); } }
+        public static string CheckfiletimeonlyLong { get { return LC.L(@"This flag instructs Duplicati to not look at metadata or filesize when deciding to scan a file for changes. Use this option if you have a large number of files and notice that the scanning takes a long time with unmodified files."); } }
+        public static string CheckfiletimeonlyShort { get { return LC.L(@"Checks only file lastmodified"); } }
+        public static string DontcompressrestorepathsShort { get { return LC.L(@"Disables path compresion on restore"); } }
+        public static string DontcompressrestorepathsLong { get { return LC.L(@"When restore a subset of a backup into a new folder, the shortest possible path is used to avoid generating deep paths with empty folders. Use this flag to skip this compression, such that the entire original folder structure is preserved, including upper level empty folders."); } }
+        public static string AllowfullremovalShort { get { return LC.L(@"Allow removing all filesets"); } }
+        public static string AllowfullremovalLong { get { return LC.L(@"By default, the last fileset cannot be removed. This is a safeguard to make sure that all remote data is not deleted by a configuration mistake. Use this flag to disable that protection, such that all filesets can be deleted."); } }
     }
 
     internal static class Common
