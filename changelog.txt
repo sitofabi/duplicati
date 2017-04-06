@@ -1,3 +1,91 @@
+2017-03-26 - 2.0.1.54_canary_2017-03-26
+==========
+* Fixed an unwanted empty folder creation, thanks @albertony
+* Fixed logic issues with volumesize minimum bounds, thanks @albertony
+* Fixed importing config files with AllowedDays set
+* Improved database performance on backups, thanks @danstahr
+
+2017-03-13 - 2.0.1.53_experimental_2017-03-13
+==========
+* This update contains the same fixes as canary 2.0.1.51
+
+2017-03-13 - 2.0.1.52_canary_2017-03-13
+==========
+* Added fail-over to read zip files with invalid central directory
+* Improved the login page for compatibility with password managers, thanks @johenning
+* Improved the URL parser for better commandline import
+* Improved the URL parsing when importing a saved configuration
+* Added exit/status codes to the verification command
+* Added IBM Bluemix COS to list of S3 providers, thanks @greyhoundforty
+* Improved startup time for commandline, thanks @frelis
+* Improved non-hosted mode for TrayIcon, thanks @mnaiman
+* Added a Jottacloud backend, thanks @albertony
+
+2017-03-03 - 2.0.1.51_canary_2017-03-03
+==========
+* Updated the bundled version of SQLite for Windows to 1.0.104.0
+* Added deep archive verification when invoking verify
+* Changed the pagination method for GoogleDrive
+
+2017-02-28 - 2.0.1.50_canary_2017-02-28
+==========
+* Added error message if `--prefix` contains hyphens
+* Fixed an issue with editing the allowed days on the schedule page
+* Changed "import" so it just loads the configuration into the editor, allowing the user to edit it before saving
+* Added function to restore that loads setup from a configuration file
+* Updated SharpCompress and S3 libraries
+* Improved crash messages for Windows TrayIcon
+
+2017-02-23 - 2.0.1.49_experimental_2017-02-23
+==========
+* This build is the same as the canary
+
+2017-02-23 - 2.0.1.48_canary_2017-02-23
+==========
+* Updated translations, thanks @agrajaghh
+* Improved verification script, thanks @mnaiman
+* Support for SSL certificates in server when running with Mono, thanks @mnaiman
+* Improved progress bar updates when processing large files, thanks @asselin
+
+2017-02-14 - 2.0.1.47_canary_2017-02-14
+==========
+* Updated some localizations
+* Updated the user interface
+* Fixed an issue where the Force Stop action did not work immediately
+
+2017-02-03 - 2.0.1.46_canary_2017-02-03
+==========
+* Fixed icon sizes
+* Removed the fake control.cgi entry
+* Added experimental support for setting the SQLite tempdir
+* Added an optimization that makes bug reports faster to create
+* Added a new HTTP reporter module, thanks @vatara
+
+2017-02-03 - 2.0.1.45_experimental_2017-02-03
+==========
+* This experimental release contains the fixes in the latest canary and some updated translations, and a fix that makes creating a bug-report faster
+
+2017-01-24 - 2.0.1.44_canary_2017-01-24
+==========
+* Added SSL test tools for Mono debugging
+* Fixed an issue with not reporting the correct error message when listing files
+* Updated logs UI to show the backup name
+* Added extra menu items to the start page
+* Fixed a number of typos
+* Added a more thorough consistency check
+* Added an extra result level "fatal" to reporting
+* Fixed reporting warning status if there were warnings during the backup
+
+2017-01-19 - 2.0.1.43_canary_2017-01-19
+==========
+* Improved queries that are used to recreate the database
+* Fixed duplicate logging entries when a log file was used
+
+2017-01-16 - 2.0.1.41_canary_2017-01-16
+==========
+* Added a debugging feature to assist with #1699, #2048, #2140, #2178
+* Fixed a problem with listing changes from the commandline
+
 2017-01-12 - 2.0.1.40_canary_2017-01-12
 ==========
 * Added extra functionality to the `--allow-full-removal` option

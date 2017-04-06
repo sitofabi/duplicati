@@ -406,6 +406,9 @@ namespace Duplicati.Library.Main
 
         public Duplicati.Library.Interface.ITestResults Test(long samples = 1)
         {
+            if (!m_options.RawOptions.ContainsKey("full-remote-verification"))
+                m_options.RawOptions["full-remote-verification"] = "true";
+                
             return RunAction(new TestResults(), (result) => {
                 new Operation.TestHandler(m_backend, m_options, result).Run(samples);
             });
@@ -704,7 +707,7 @@ namespace Duplicati.Library.Main
                 if (!System.IO.Directory.Exists(path))
                     System.IO.Directory.CreateDirectory(path);
 
-                m_logfilescope = Logging.Log.StartScope(Logging.Log.CurrentLog = m_logfile = new Library.Logging.StreamLog(m_options.Logfile));
+                m_logfilescope = Logging.Log.StartScope(m_logfile = new Library.Logging.StreamLog(m_options.Logfile));
             }
 
             result.VerboseErrors = m_options.DebugOutput;
@@ -761,13 +764,14 @@ namespace Duplicati.Library.Main
         /// This function will examine all options passed on the commandline, and test for unsupported or deprecated values.
         /// Any errors will be logged into the statistics module.
         /// </summary>
-        /// <param name="options">The commandline options given</param>
-        /// <param name="backend">The backend url</param>
-        /// <param name="stats">The statistics into which warnings are written</param>
+        /// <param name="log">The log instance</param>
         private void ValidateOptions(ILogWriter log)
         {
             if (m_options.KeepTime.Ticks > 0 && m_options.KeepVersions > 0)
-                throw new Exception(string.Format("Setting both --{0} and --{1} is not permitted", "keep-versions", "keep-time"));
+                throw new Interface.UserInformationException(string.Format("Setting both --{0} and --{1} is not permitted", "keep-versions", "keep-time"));
+
+            if (!string.IsNullOrWhiteSpace(m_options.Prefix) && m_options.Prefix.Contains("-"))
+                throw new Interface.UserInformationException("The prefix cannot contain hyphens (-)");
 
             //No point in going through with this if we can't report
             if (log == null)

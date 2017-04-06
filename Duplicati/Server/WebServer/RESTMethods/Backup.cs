@@ -91,23 +91,14 @@ namespace Duplicati.Server.WebServer.RESTMethods
 
         private void FetchLogData(IBackup backup, RequestInfo info)
         {
-            using(var con = (System.Data.IDbConnection)Activator.CreateInstance(Duplicati.Library.SQLiteHelper.SQLiteLoader.SQLiteConnectionType))
-            {
-                con.ConnectionString = "Data Source=" + backup.DBPath;
-                con.Open();
-
+            using(var con = Duplicati.Library.SQLiteHelper.SQLiteLoader.LoadConnection(backup.DBPath))
                 using(var cmd = con.CreateCommand())
                     info.OutputOK(LogData.DumpTable(cmd, "LogData", "ID", info.Request.QueryString["offset"].Value, info.Request.QueryString["pagesize"].Value));
-            }
         }
 
         private void FetchRemoteLogData(IBackup backup, RequestInfo info)
         {
-            using(var con = (System.Data.IDbConnection)Activator.CreateInstance(Duplicati.Library.SQLiteHelper.SQLiteLoader.SQLiteConnectionType))
-            {
-                con.ConnectionString = "Data Source=" + backup.DBPath;
-                con.Open();
-
+            using(var con = Duplicati.Library.SQLiteHelper.SQLiteLoader.LoadConnection(backup.DBPath))
                 using(var cmd = con.CreateCommand())
                 {
                     var dt = LogData.DumpTable(cmd, "RemoteOperation", "ID", info.Request.QueryString["offset"].Value, info.Request.QueryString["pagesize"].Value);
@@ -119,7 +110,6 @@ namespace Duplicati.Server.WebServer.RESTMethods
 
                     info.OutputOK(dt);
                 }
-            }
         }
         private void IsDBUsedElseWhere(IBackup backup, RequestInfo info)
         {
@@ -243,7 +233,7 @@ namespace Duplicati.Server.WebServer.RESTMethods
             string[] filters;
             var rawpaths = (paths ?? string.Empty).Trim();
             
-            // We send the file list as a JSON array to avoid encoding issues with the path seperator 
+            // We send the file list as a JSON array to avoid encoding issues with the path separator 
             // as it is an allowed character in file and path names.
             // We also accept the old way, for compatibility with the greeno theme
             if (!string.IsNullOrWhiteSpace(rawpaths) && rawpaths.StartsWith("[", StringComparison.Ordinal) && rawpaths.EndsWith("]", StringComparison.Ordinal))

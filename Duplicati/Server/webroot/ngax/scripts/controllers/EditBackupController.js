@@ -1,4 +1,4 @@
-backupApp.controller('EditBackupController', function ($scope, $routeParams, $location, $timeout, AppService, AppUtils, SystemInfo, DialogService, EditBackupService, gettext, gettextCatalog) {
+backupApp.controller('EditBackupController', function ($rootScope, $scope, $routeParams, $location, $timeout, AppService, AppUtils, SystemInfo, DialogService, EditBackupService, gettext, gettextCatalog) {
 
     $scope.SystemInfo = SystemInfo.watch($scope);
     $scope.AppUtils = AppUtils;
@@ -147,16 +147,25 @@ backupApp.controller('EditBackupController', function ($scope, $routeParams, $lo
         }
     };
 
-    $scope.toggleArraySelection = function (lst, value) {
-        if (lst === null)
-          lst = [];
-
+    function toggleArraySelection(lst, value) {
         var ix = lst.indexOf(value);
 
         if (ix > -1)
             lst.splice(ix, 1);
         else
             lst.push(value);
+    };
+
+    $scope.toggleAllowedDays = function(value) {
+        if ($scope.Schedule.AllowedDays == null)
+            $scope.Schedule.AllowedDays = [];
+        toggleArraySelection($scope.Schedule.AllowedDays, value);
+    };
+
+    $scope.toggleExcludeAttributes = function(value) {
+        if ($scope.ExcludeAttributes == null)
+            $scope.ExcludeAttributes = [];
+        toggleArraySelection($scope.ExcludeAttributes, value);
     };
 
     $scope.save = function() {
@@ -169,7 +178,7 @@ backupApp.controller('EditBackupController', function ($scope, $routeParams, $lo
             Schedule: angular.copy($scope.Schedule)
         };
 
-        var opts = angular.copy($scope.Options);
+        var opts = angular.copy($scope.Options, opts);
 
         if (!$scope.ExcludeLargeFiles)
             delete opts['--skip-files-larger-than'];
@@ -182,6 +191,9 @@ backupApp.controller('EditBackupController', function ($scope, $routeParams, $lo
 
         if (!AppUtils.parse_extra_options(scope.ExtendedOptions, opts))
             return false;
+
+        for (var n in $scope.servermodulesettings)
+            opts['--' + n] = $scope.servermodulesettings[n];
 
         var exclattr = ($scope.ExcludeAttributes || []).concat((opts['--exclude-files-attributes'] || '').split(','));
         var exclmap = { '': true };
@@ -505,6 +517,9 @@ backupApp.controller('EditBackupController', function ($scope, $routeParams, $lo
             delete extopts[delopts[n]];
 
         $scope.ExtendedOptions = AppUtils.serializeAdvancedOptionsToArray(extopts);
+        
+        $scope.servermodulesettings = {};
+        AppUtils.extractServerModuleOptions($scope.ExtendedOptions, $scope.ServerModules, $scope.servermodulesettings, 'SupportedLocalCommands');
 
         $scope.showAdvanced = $scope.ExtendedOptions.length > 0;
 
@@ -539,6 +554,20 @@ backupApp.controller('EditBackupController', function ($scope, $routeParams, $lo
         }
     }
 
+    function setupServerModules()
+    {
+        var mods = [];
+        if ($scope.SystemInfo.ServerModules != null)
+            for(var ix in $scope.SystemInfo.ServerModules)
+            {
+                var m = $scope.SystemInfo.ServerModules[ix];
+                if (m.SupportedLocalCommands != null && m.SupportedLocalCommands.length > 0)
+                    mods.push(m);
+            }
+
+        $scope.ServerModules = mods;
+    };
+
     function reloadOptionsList()
     {
         if ($scope.Options == null)
@@ -551,8 +580,31 @@ backupApp.controller('EditBackupController', function ($scope, $routeParams, $lo
         if (ix > 0)
             backmodule = backmodule.substr(0, ix);
 
-        $scope.ExtendedOptionList = AppUtils.buildOptionList($scope.SystemInfo, encmodule, compmodule, backmodule);
+        $scope.ExtendedOptionList = AppUtils.buildOptionList($scope.SystemInfo, encmodule, compmodule, backmodule);        
+        setupServerModules();
+        
+        AppUtils.extractServerModuleOptions($scope.ExtendedOptions, $scope.ServerModules, $scope.servermodulesettings, 'SupportedLocalCommands');        
     };
+
+    function checkAllowedDaysConfig()
+    {
+        if ($scope.Schedule == null || $scope.Schedule.AllowedDays == null)
+            return;
+
+        // Remove invalid values
+        var alldays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+        for (var i = $scope.Schedule.AllowedDays.length - 1; i >= 0; i--)
+            if (alldays.indexOf($scope.Schedule.AllowedDays[i]) < 0)
+                $scope.Schedule.AllowedDays.splice(i, 1);
+
+        // Empty and all are the same, but the UI confuses if no days are selected
+        if ($scope.Schedule.AllowedDays.length == 0)
+            $timeout(function() {
+                $scope.Schedule.AllowedDays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+            });
+    };
+
+    setupServerModules();
 
     $scope.$watch("Options['encryption-module']", reloadOptionsList);
     $scope.$watch("Options['compression-module']", reloadOptionsList);
@@ -563,19 +615,23 @@ backupApp.controller('EditBackupController', function ($scope, $routeParams, $lo
         if ($scope.Options != null && $scope.Options['--skip-files-larger-than'] == null)
             $scope.Options['--skip-files-larger-than'] = '100MB';
     });
+    $scope.$watch("Schedule.AllowedDays", checkAllowedDaysConfig, true);
 
     if ($routeParams.backupid == null) {
 
         AppService.get('/backupdefaults').then(function(data) {
 
             $scope.rawddata = data.data.data;
+
+            if ($location.$$path.indexOf('/add-import') == 0 && $rootScope.importConfig != null)
+                angular.merge($scope.rawddata, $rootScope.importConfig);
+
             setupScope($scope.rawddata);
 
         }, function(data) {
             AppUtils.connectionError(gettextCatalog.getString('Failed to read backup defaults:') + ' ', data);
             $location.path('/');
         });
-
     } else {
 
         AppService.get('/backup/' + $routeParams.backupid).then(function(data) {

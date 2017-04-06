@@ -20,6 +20,7 @@ using Duplicati.Library.Interface;
 using System.Collections.Generic;
 using Duplicati.Library.Main.Database;
 using Duplicati.Library.Logging;
+using System.Linq;
 
 namespace Duplicati.Library.Main
 {
@@ -244,7 +245,20 @@ namespace Duplicati.Library.Main
                     m_verboseErrors = value;
             }
         }
-        
+
+        public virtual ParsedResultType ParsedResult
+        {
+            get
+            {
+                if (Errors != null && Errors.Any())
+                    return ParsedResultType.Error;
+                else if (Warnings != null && Warnings.Any())
+                    return ParsedResultType.Warning;
+                else
+                    return ParsedResultType.Success;
+            }
+        }        
+
         public DateTime EndTime { get; set; }
         public DateTime BeginTime { get; set; }
         public TimeSpan Duration { get { return EndTime.Ticks == 0 ? new TimeSpan(0) : EndTime - BeginTime; } }
@@ -611,15 +625,20 @@ namespace Duplicati.Library.Main
         /// </summary>
         public void Pause()
         {
-            lock(m_lock)
-                if (m_controlState == TaskControlState.Run)
-                {
-                    m_pauseEvent.Reset();
-                    m_controlState = TaskControlState.Pause;
-                }
-            
-            if (StateChangedEvent != null)
-                StateChangedEvent(m_controlState);
+            if (m_parent != null)
+                m_parent.Pause();
+            else
+            {
+                lock (m_lock)
+                    if (m_controlState == TaskControlState.Run)
+                    {
+                        m_pauseEvent.Reset();
+                        m_controlState = TaskControlState.Pause;
+                    }
+
+                if (StateChangedEvent != null)
+                    StateChangedEvent(m_controlState);
+            }
         }
         
         /// <summary>
@@ -627,15 +646,20 @@ namespace Duplicati.Library.Main
         /// </summary>
         public void Resume()
         {
-            lock(m_lock)
-                if (m_controlState == TaskControlState.Pause)
-                {
-                    m_pauseEvent.Set();
-                    m_controlState = TaskControlState.Run;
-                }
-            
-            if (StateChangedEvent != null)
-                StateChangedEvent(m_controlState);
+            if (m_parent != null)
+                m_parent.Resume();
+            else
+            {
+                lock (m_lock)
+                    if (m_controlState == TaskControlState.Pause)
+                    {
+                        m_pauseEvent.Set();
+                        m_controlState = TaskControlState.Run;
+                    }
+
+                if (StateChangedEvent != null)
+                    StateChangedEvent(m_controlState);
+            }
         }
         
         /// <summary>
@@ -643,15 +667,20 @@ namespace Duplicati.Library.Main
         /// </summary>
         public void Stop() 
         {
-            lock(m_lock)
-                if (m_controlState != TaskControlState.Abort)
-                {
-                    m_controlState = TaskControlState.Stop;
-                    m_pauseEvent.Set();
-                }
-            
-            if (StateChangedEvent != null)
-                StateChangedEvent(m_controlState);
+            if (m_parent != null)
+                m_parent.Stop();
+            else
+            {
+                lock (m_lock)
+                    if (m_controlState != TaskControlState.Abort)
+                    {
+                        m_controlState = TaskControlState.Stop;
+                        m_pauseEvent.Set();
+                    }
+
+                if (StateChangedEvent != null)
+                    StateChangedEvent(m_controlState);
+            }
         }
         
         /// <summary>
@@ -659,14 +688,19 @@ namespace Duplicati.Library.Main
         /// </summary>
         public void Abort()
         {
-            lock(m_lock)
+            if (m_parent != null)
+                m_parent.Abort();
+            else
             {
-                m_controlState = TaskControlState.Abort;
-                m_pauseEvent.Set();
+                lock (m_lock)
+                {
+                    m_controlState = TaskControlState.Abort;
+                    m_pauseEvent.Set();
+                }
+
+                if (StateChangedEvent != null)
+                    StateChangedEvent(m_controlState);
             }
-            
-            if (StateChangedEvent != null)
-                StateChangedEvent(m_controlState);
         }
         
         /// <summary>
@@ -674,16 +708,32 @@ namespace Duplicati.Library.Main
         /// </summary>
         public TaskControlState TaskControlRendevouz()
         {
-            // If we are paused, go into pause mode
-            m_pauseEvent.WaitOne();
-            
-            // If we are aborted, throw exception
-            if (m_controlState == TaskControlState.Abort)
-                System.Threading.Thread.CurrentThread.Abort();
-            
-            return m_controlState;
+            if (m_parent != null)
+                return m_parent.TaskControlRendevouz();
+            else
+            {
+                // If we are paused, go into pause mode
+                m_pauseEvent.WaitOne();
+
+                // If we are aborted, throw exception
+                if (m_controlState == TaskControlState.Abort)
+                    System.Threading.Thread.CurrentThread.Abort();
+
+                return m_controlState;
+            }
         }
-        
+
+        /// <summary>
+        /// Helper method to check if abort is requested
+        /// </summary>
+        public bool IsAbortRequested()
+        {
+            if (m_parent != null)
+                return m_parent.IsAbortRequested();
+            else
+                return m_controlState == TaskControlState.Abort;
+        }
+
         /// <summary>
         /// Returns a <see cref="System.String"/> that represents the current <see cref="Duplicati.Library.Main.BasicResults"/>.
         /// </summary>
@@ -754,7 +804,7 @@ namespace Duplicati.Library.Main
         }
 
     }
-    
+
     internal class BackupResults : BasicResults, IBackupResults
     {
         public long DeletedFiles { get; internal set; }
@@ -777,13 +827,26 @@ namespace Duplicati.Library.Main
         public long DeletedSymlinks { get; internal set; }
         public bool PartialBackup { get; internal set; }
         public bool Dryrun { get; internal set; }
-        
+
         public override OperationMode MainOperation { get { return OperationMode.Backup; } }
-        
+
         public ICompactResults CompactResults { get; internal set; }
         public IDeleteResults DeleteResults { get; internal set; }
-        public IRepairResults RepairResults { get; internal set; }        
-        public ITestResults TestResults { get; internal set; }        
+        public IRepairResults RepairResults { get; internal set; }
+        public ITestResults TestResults { get; internal set; }
+
+        public override ParsedResultType ParsedResult
+        {
+            get
+            {
+                if ((Errors != null && Errors.Any()) || FilesWithError > 0)
+                    return ParsedResultType.Error;
+                else if ((Warnings != null && Warnings.Any()) || PartialBackup)
+                    return ParsedResultType.Warning;
+                else
+                    return ParsedResultType.Success;                    
+            }
+        }
     }
     
     internal class RestoreResults : BasicResults, Library.Interface.IRestoreResults
@@ -800,6 +863,19 @@ namespace Duplicati.Library.Main
         public override OperationMode MainOperation { get { return OperationMode.Restore; } }
         
         public IRecreateDatabaseResults RecreateDatabaseResults { get; internal set; }
+
+        public override ParsedResultType ParsedResult
+        {
+            get
+            {
+                if (Errors != null && Errors.Any())
+                    return ParsedResultType.Error;
+                else if ((Warnings != null && Warnings.Any()) || FilesRestored == 0)
+                    return ParsedResultType.Warning;
+                else
+                    return ParsedResultType.Success;
+            }
+        }
     }
 
     internal class ListResultFile : Duplicati.Library.Interface.IListResultFile
