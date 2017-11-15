@@ -32,6 +32,8 @@ namespace Duplicati.Server.WebServer
         private const string XSRF_COOKIE_NAME = "xsrf-token";
         private const string XSRF_HEADER_NAME = "X-XSRF-Token";
 
+        private const string TRAYICONPASSWORDSOURCE_HEADER = "X-TrayIcon-PasswordSource";
+
         public const string LOGIN_SCRIPT_URI = "/login.cgi";
         public const string LOGOUT_SCRIPT_URI = "/logout.cgi";
         public const string CAPTCHA_IMAGE_URI = RESTHandler.API_URI_PATH + "/captcha/";
@@ -151,7 +153,7 @@ namespace Duplicati.Server.WebServer
             Tuple<DateTime, string> tmpTuple;
             DateTime tmpDateTime;
 
-            if (LOGOUT_SCRIPT_URI.Equals(request.Uri.AbsolutePath, StringComparison.InvariantCultureIgnoreCase))
+            if (LOGOUT_SCRIPT_URI.Equals(request.Uri.AbsolutePath, StringComparison.OrdinalIgnoreCase))
             {
                 if (!string.IsNullOrWhiteSpace(auth_token))
                 {
@@ -164,7 +166,7 @@ namespace Duplicati.Server.WebServer
 
                 return true;
             }
-            else if (LOGIN_SCRIPT_URI.Equals(request.Uri.AbsolutePath, StringComparison.InvariantCultureIgnoreCase))
+            else if (LOGIN_SCRIPT_URI.Equals(request.Uri.AbsolutePath, StringComparison.OrdinalIgnoreCase))
             {
                 // Remove expired nonces
                 foreach(var k in (from n in m_activeNonces where DateTime.UtcNow > n.Value.Item1 select n.Key))
@@ -179,6 +181,11 @@ namespace Duplicati.Server.WebServer
                         return true;
                     }
 
+                    var password = Program.DataConnection.ApplicationSettings.WebserverPassword;
+
+                    if (request.Headers[TRAYICONPASSWORDSOURCE_HEADER] == "database")
+                        password = Program.DataConnection.ApplicationSettings.WebserverPasswordTrayIconHash;
+                    
                     var buf = new byte[32];
                     var expires = DateTime.UtcNow.AddMinutes(AUTH_TIMEOUT_MINUTES);
                     m_prng.GetBytes(buf);
@@ -186,7 +193,7 @@ namespace Duplicati.Server.WebServer
 
                     var sha256 = System.Security.Cryptography.SHA256.Create();
                     sha256.TransformBlock(buf, 0, buf.Length, buf, 0);
-                    buf = Convert.FromBase64String(Program.DataConnection.ApplicationSettings.WebserverPassword);
+                    buf = Convert.FromBase64String(password);
                     sha256.TransformFinalBlock(buf, 0, buf.Length);
                     var pwd = Convert.ToBase64String(sha256.Hash);
 
@@ -264,11 +271,11 @@ namespace Duplicati.Server.WebServer
             }
 
             var limitedAccess =
-                request.Uri.AbsolutePath.StartsWith(RESTHandler.API_URI_PATH, StringComparison.InvariantCultureIgnoreCase)
+                request.Uri.AbsolutePath.StartsWith(RESTHandler.API_URI_PATH, StringComparison.OrdinalIgnoreCase)
             ;
 
             // Override to allow the CAPTCHA call to go through
-            if (request.Uri.AbsolutePath.StartsWith(CAPTCHA_IMAGE_URI, StringComparison.InvariantCultureIgnoreCase) && request.Method == "GET")
+            if (request.Uri.AbsolutePath.StartsWith(CAPTCHA_IMAGE_URI, StringComparison.OrdinalIgnoreCase) && request.Method == "GET")
                 limitedAccess = false;
 
             if (limitedAccess)
@@ -316,7 +323,7 @@ namespace Duplicati.Server.WebServer
                 }
             }
 
-            if ("/".Equals(request.Uri.AbsolutePath, StringComparison.InvariantCultureIgnoreCase) || "/index.html".Equals(request.Uri.AbsolutePath, StringComparison.InvariantCultureIgnoreCase))
+            if ("/".Equals(request.Uri.AbsolutePath, StringComparison.OrdinalIgnoreCase) || "/index.html".Equals(request.Uri.AbsolutePath, StringComparison.OrdinalIgnoreCase))
             {
                 response.Redirect("/login.html");
                 return true;

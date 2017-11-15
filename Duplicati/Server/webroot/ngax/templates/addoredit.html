@@ -146,7 +146,7 @@
                         <textarea id="SourcePathList" string-array-as-text ng-model="Backup.Sources" ng-model-options="{updateOn: 'blur'}"></textarea>
                     </div>
                     <div class="input text overlayButton">
-                        <input type="text" name="sourcePath" id="sourcePath" placeholder="Add a path directly" ng-model="manualSourcePath" ng-disabled="validatingSourcePath" />
+                        <input type="text" name="sourcePath" id="sourcePath" placeholder="{{'Add a path directly' | translate}}" ng-model="manualSourcePath" ng-disabled="validatingSourcePath" />
                         <a href id="sourceFolderPathAdd" class="button"  ng-disabled="validatingSourcePath || manualSourcePath == null || manualSourcePath == ''" ng-click="addManualSourcePath()">
                             <span ng-show="validatingSourcePath" translate>Validating ...</span>
                             <span ng-hide="validatingSourcePath" translate>Add path</span>
@@ -195,6 +195,20 @@
 
                             </ul>
                             <a href ng-click="Backup.Filters.push('-*')" translate>Add filter</a>
+                        </div>
+
+                        <div class="input checkbox multiple">
+                            <strong translate>Default Filters</strong>
+                            
+                            <div ng-repeat="filterSet in defaultFilterSets">
+                                <input id="filterSet_{{filterSet.value}}"
+                                       type="checkbox"
+                                       name="filterSet_{{filterSet.value}}"
+                                       value="{{filterSet.value}}"
+                                       ng-checked="isDefaultFilterSetEnabled(filterSet.value)"
+                                       ng-click="toggleDefaultFilters(filterSet.value)" />
+                                <label for="filterSet_{{filterSet.value}}">{{filterSet.name}}</label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -300,10 +314,10 @@
                     </select>
                 </div>
                 <div class="input multiple text select keepBackups">
-                    <label for="keepTimeType" translate>Keep backups</label>
+                    <label for="keepTimeType" translate>Keep this number of backups</label>
                     <select id="keepTimeType" ng-model="KeepType">
-                        <option value="" translate>forever</option>
-                        <option value="time" translate>for a specific time</option>
+                        <option value="" translate>unlimited</option>
+                        <option value="time" translate>until they are older than</option>
                         <option value="versions" translate>a specific number</option>
                     </select>
 

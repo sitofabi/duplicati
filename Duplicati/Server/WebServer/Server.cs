@@ -107,7 +107,7 @@ namespace Duplicati.Server.WebServer
             if (string.IsNullOrWhiteSpace(interfacestring))
                 interfacestring = DEFAULT_OPTION_INTERFACE;
 
-            if (interfacestring.Trim() == "*" || interfacestring.Trim().Equals("any", StringComparison.InvariantCultureIgnoreCase))
+            if (interfacestring.Trim() == "*" || interfacestring.Trim().Equals("any", StringComparison.OrdinalIgnoreCase) || interfacestring.Trim().Equals("all", StringComparison.OrdinalIgnoreCase))
                 listenInterface = System.Net.IPAddress.Any;
             else if (interfacestring.Trim() == "loopback")
                 listenInterface = System.Net.IPAddress.Loopback;
@@ -172,7 +172,7 @@ namespace Duplicati.Server.WebServer
                     if (!certValid)
                         server.Start(listenInterface, p);
                     else
-                        server.Start(listenInterface, p, cert, System.Security.Authentication.SslProtocols.Tls | System.Security.Authentication.SslProtocols.Tls11 | System.Security.Authentication.SslProtocols.Tls12, null, false);
+                        server.Start(listenInterface, p, cert, System.Security.Authentication.SslProtocols.Tls11 | System.Security.Authentication.SslProtocols.Tls12, null, false);
 
                     m_server = server;
                     m_server.ServerName = string.Format("{0} v{1}", Library.AutoUpdater.AutoUpdateSettings.AppName, System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
@@ -211,6 +211,9 @@ namespace Duplicati.Server.WebServer
         private static HttpServer.HttpServer CreateServer(IDictionary<string, string> options)
         {
             HttpServer.HttpServer server = new HttpServer.HttpServer();
+
+            if (string.Equals(Environment.GetEnvironmentVariable("SYNO_DSM_AUTH") ?? string.Empty, "1"))
+                server.Add(new SynologyAuthenticationHandler());
 
             server.Add(new AuthenticationHandler());
 
@@ -287,7 +290,7 @@ namespace Duplicati.Server.WebServer
                 server.Add(proxy_files);
             }
 
-            var fh = new FileModule("/", webroot);
+            var fh = new FileModule("/", webroot, true);
             AddMimeTypes(fh);
             server.Add(fh);
 

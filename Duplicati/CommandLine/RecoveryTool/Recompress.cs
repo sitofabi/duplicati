@@ -47,7 +47,7 @@ namespace Duplicati.CommandLine.RecoveryTool
 
                 Console.WriteLine("Listing files on backend: {0} ...", backend.ProtocolKey);
 
-                var rawlist = backend.List();
+                var rawlist = backend.List().ToList();
 
                 Console.WriteLine("Found {0} files at remote storage", rawlist.Count);
 
@@ -79,9 +79,9 @@ namespace Duplicati.CommandLine.RecoveryTool
                         if (tmp.Length == 0)
                             Console.WriteLine("Found {0} files at the remote storage, but none that could be parsed", rawlist.Count);
                         else if (types.Length == 1)
-                            Console.WriteLine("Found {0} parse-able files with the prefix {1}, did you forget to set the backup-prefix?", tmp.Length, types[0]);
+                            Console.WriteLine("Found {0} parse-able files with the prefix {1}, did you forget to set the backup prefix?", tmp.Length, types[0]);
                         else
-                            Console.WriteLine("Found {0} parse-able files (of {1} files) with different prefixes: {2}, did you forget to set the backup-prefix?", tmp.Length, rawlist.Count, string.Join(", ", types));
+                            Console.WriteLine("Found {0} parse-able files (of {1} files) with different prefixes: {2}, did you forget to set the backup prefix?", tmp.Length, rawlist.Count, string.Join(", ", types));
                     }
 
                     return 100;
@@ -204,7 +204,7 @@ namespace Duplicati.CommandLine.RecoveryTool
                                             textJSON = sourceStreamReader.ReadToEnd();
                                             JToken token = JObject.Parse(textJSON);
                                             var fileInfoBlocks = new FileInfo(Path.Combine(targetfolder, cmfileNew.Replace("vol/", "")));
-                                            var filehasher = System.Security.Cryptography.HashAlgorithm.Create(m_Options.FileHashAlgorithm);
+                                            var filehasher = HashAlgorithmHelper.Create(m_Options.FileHashAlgorithm);
                                             
                                             using (var fileStream = fileInfoBlocks.Open(FileMode.Open))
                                             {
