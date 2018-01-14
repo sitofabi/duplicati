@@ -193,7 +193,7 @@ namespace Duplicati.CommandLine.RecoveryTool
                                                 }
                                                 catch(Exception ex)
                                                 {
-                                                    Console.WriteLine("Failed to read hash: {0}{1}{2}", h, Environment.NewLine, ex.ToString());
+                                                    Console.WriteLine("Failed to read hash: {0}{1}{2}", h, Environment.NewLine, ex);
                                                 }
 
                                                 bi++;
@@ -201,7 +201,7 @@ namespace Duplicati.CommandLine.RecoveryTool
                                         }
                                         catch (Exception ex)
                                         {
-                                            Console.WriteLine("Failed to read Blocklist hash: {0}{1}{2}", blh, Environment.NewLine, ex.ToString());
+                                            Console.WriteLine("Failed to read Blocklist hash: {0}{1}{2}", blh, Environment.NewLine, ex);
                                         }
 
                                         blhi++;
@@ -233,7 +233,7 @@ namespace Duplicati.CommandLine.RecoveryTool
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(" error: {0}", ex.ToString());
+                        Console.WriteLine(" error: {0}", ex);
                         errors++;
                     }
                     i++;
@@ -366,7 +366,7 @@ namespace Duplicati.CommandLine.RecoveryTool
                     if (str.Length == 0)
                         continue;
 
-                    var ix = str.IndexOf(", ");
+                    var ix = str.IndexOf(", ", StringComparison.Ordinal);
                     if (ix < 0)
                         Console.WriteLine("Failed to parse line starting at offset {0} in index file, string: {1}", m_indexfile.Position - str.Length - m_newline.Length, str);
                     yield return new KeyValuePair<string, string>(str.Substring(0, ix), str.Substring(ix + 2));

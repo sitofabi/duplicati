@@ -10,7 +10,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2017-09-17 22:31+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: Stefan Simmerstatter <stefan.simmerstatter@gmx.net>, 2017\n"
+"Last-Translator: Yassin H <info@yassinharim.de>, 2017\n"
 "Language-Team: German (https://www.transifex.com/duplicati/teams/67655/de/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -1501,39 +1501,39 @@ msgstr ""
 
 #: Library/Backend/Sia/Strings.cs:6
 msgid "Sia Decentralized Cloud"
-msgstr ""
+msgstr "Sia Dezentrale Cloud"
 
 #: Library/Backend/Sia/Strings.cs:7
 msgid "This backend can read and write data to Sia."
-msgstr ""
+msgstr "Das Backend kann Daten von Sia lesen und schreiben."
 
 #: Library/Backend/Sia/Strings.cs:8
 msgid "Sia address"
-msgstr ""
+msgstr "Sia Adresse"
 
 #: Library/Backend/Sia/Strings.cs:9
 msgid "Sia address, ie 127.0.0.1:9980"
-msgstr ""
+msgstr "Sie Adresse, z. B. 127.0.0.1:9980"
 
 #: Library/Backend/Sia/Strings.cs:10
 msgid "Backup path"
-msgstr ""
+msgstr "Backuppfad"
 
 #: Library/Backend/Sia/Strings.cs:11
 msgid "Target path, ie /backup"
-msgstr ""
+msgstr "Zielpfad, z. B. /backup"
 
 #: Library/Backend/Sia/Strings.cs:12 Library/Backend/Sia/Strings.cs:13
 msgid "Sia password"
-msgstr ""
+msgstr "Sia Passwort"
 
 #: Library/Backend/Sia/Strings.cs:14
 msgid "3"
-msgstr ""
+msgstr "3"
 
 #: Library/Backend/Sia/Strings.cs:15
 msgid "Minimum value is 3."
-msgstr ""
+msgstr "Der Mindestwert ist 3."
 
 #: Library/Backend/SSHv2/Strings.cs:4
 msgid "Module for generating SSH private/public keys"
@@ -2443,6 +2443,8 @@ msgid ""
 "The source folder {0} uses a wildcard drive, which is only supported on "
 "Windows, aborting backup"
 msgstr ""
+"Der Quellordner {0} nutzt ein Wildcard-Laufwerk, das nur auf Windows "
+"unterstützt wird. Das Backup wird abgebrochen."
 
 #: Library/Main/Strings.cs:32
 msgid ""
@@ -2973,6 +2975,12 @@ msgid ""
 "intended for testing and should not be disabled in a production environment."
 " If USN is not enabled, this option has no effect."
 msgstr ""
+"Wenn USN aktiviert ist, werden die USN-Nummern genutzt, um seit dem letzten "
+"Backup geänderte Dateien zu identifizieren. Mithilfe dieser Option wird die "
+"Nutzung der USN-Nummer deaktiviert; Duplicati scannt alle Quelldateien. "
+"Diese Option ist hauptsächlich für Tests gedacht und sollte in "
+"Produktionsumgebungen nicht deaktiviert werden. Falls USN deaktiviert ist, "
+"hat diese Option keine Auswirkungen."
 
 #: Library/Main/Strings.cs:106
 msgid "Disables changelist by USN numbers"
@@ -3253,10 +3261,12 @@ msgstr ""
 msgid ""
 "This option can be used to increase speed in exchange for extra memory use."
 msgstr ""
+"Mithilfe dieser Option kann die Geschwindigkeit auf Kosten von erhöhter "
+"Speichernutzung verbessert werden."
 
 #: Library/Main/Strings.cs:147
 msgid "Store an in-memory block cache"
-msgstr ""
+msgstr "Speichere einen Block-Cache im Arbeitsspeicher."
 
 #: Library/Main/Strings.cs:148
 msgid ""
@@ -3461,6 +3471,9 @@ msgid ""
 "Use this option to overwrite target files when restoring, if this option is "
 "not set the files will be restored with a timestamp and a number appended."
 msgstr ""
+"Wenn diese Option aktiv ist, werden Zieldateien bei der Wiederherstellung "
+"überschrieben. Andernfalls wird wiederhergestellten Dateien ein Zeitstempel "
+"und eine Zahl angehängt."
 
 #: Library/Main/Strings.cs:183
 msgid "Output more progress information"
@@ -3481,6 +3494,8 @@ msgid ""
 "Use this option to increase the amount of output generated as the result of "
 "the operation, including all filenames."
 msgstr ""
+"Benutzen sie diese Option um den Detailgrad der Ausgabe von Operationen zu "
+"erhöhen. Diese beinhaltet alle Dateinamen."
 
 #: Library/Main/Strings.cs:187
 msgid "Determine if verification files are uploaded"
@@ -3582,6 +3597,9 @@ msgid ""
 "By default permissions are not restored as they might prevent you from "
 "accessing your files. Use this option to restore the permissions as well."
 msgstr ""
+"Standardmäßig werden Dateiberechtigungen nicht wiederhergestellt, da Sie "
+"sonst eventuell nicht auf Ihre Dateien zugreifen könnten. Mithilfe dieser "
+"Option werden auch Dateiberechtigungen wiederhergestellt."
 
 #: Library/Main/Strings.cs:204
 msgid "Skip restored file check"
@@ -3593,6 +3611,10 @@ msgid ""
 "verify that the restore was successful. Use this option to disable the check"
 " and avoid waiting for the verification."
 msgstr ""
+"Nach dem Wiederherstellen von Dateien wird der Datei-Hash aller "
+"wiederhergestellten Dateien überprüft, um sicherzustellen, dass die "
+"Wiederherstellung erfolgreich war. Verwenden Sie diese Option, um die "
+"Prüfung zu deaktivieren und das Warten auf die Überprüfung zu vermeiden."
 
 #: Library/Main/Strings.cs:206
 msgid "Activate caches"
@@ -3613,6 +3635,9 @@ msgid ""
 "of downloaded data. Use this option to skip this optimization and only use "
 "remote data."
 msgstr ""
+"Duplicati wird versuchen, Daten aus Quelldateien zu verwenden, um die Menge "
+"der heruntergeladenen Daten zu minimieren. Verwenden Sie diese Option, um "
+"diese Optimierung zu deaktivieren und nur Server-Daten zu verwenden."
 
 #: Library/Main/Strings.cs:210
 msgid "Check block hashes"
@@ -3623,6 +3648,9 @@ msgid ""
 "Use this option to increase verification by checking the hash of blocks read"
 " from a volume before patching restored files with the data."
 msgstr ""
+"Verwenden Sie diese Option, um die Verifizierung zu erhöhen, indem Sie den "
+"Hash der Blöcke überprüfen, die aus einem Volume gelesen wurden, bevor die "
+"wiederhergestellten Dateien mit den Daten gepatcht werden."
 
 #: Library/Main/Strings.cs:212 Server/Strings.cs:31
 msgid "Clean up old log data"
@@ -3688,7 +3716,7 @@ msgstr ""
 
 #: Library/Main/Strings.cs:223
 msgid "Disables synthetic filelist"
-msgstr ""
+msgstr "Synthetische Dateiliste deaktivieren."
 
 #: Library/Main/Strings.cs:224
 msgid ""
@@ -3851,6 +3879,10 @@ msgid ""
 "which allows some optimizations when authenticating, but also breaks some "
 "web servers, causing them to report \"417 - Expectation failed\""
 msgstr ""
+"Die standardmäßige HTTP-Anfrage enthält den header \"Expect: 100-Continue\"."
+" Dieser erlaubt Optimisierungen bei der Authentifizierung, kann aber dazu "
+"führen, dass manche Webserver nicht richtig funktionieren und mit dem Fehler"
+" \"417 - Expectation failed\" antworten."
 
 #: Library/Modules/Builtin/Strings.cs:26
 msgid "Disable the expect header"
@@ -3915,7 +3947,7 @@ msgstr ""
 
 #: Library/Modules/Builtin/Strings.cs:38
 msgid "Sets HTTP buffering"
-msgstr ""
+msgstr "Setzt HTTP-Buffering"
 
 #: Library/Modules/Builtin/Strings.cs:39
 #, csharp-format
@@ -4019,6 +4051,10 @@ msgid ""
 "completed within this time, it will continue to execute but the operation "
 "will continue too, and no script output will be processed."
 msgstr ""
+"Legt die maximale Zeit fest, die ein Skript ausgeführt werden darf. Wenn das"
+" Skript in dieser Zeit nicht abgeschlossen hat, wird es weiterhin "
+"ausgeführt, aber die Operation wird auch fortgesetzt, und es wird keine "
+"Skriptausgabe verarbeitet."
 
 #: Library/Modules/Builtin/Strings.cs:64
 msgid "Sets the script timeout"

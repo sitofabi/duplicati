@@ -148,7 +148,7 @@ namespace Duplicati.Library.AutoUpdater
                 var attempts = new List<string>();
 
                 // We do not want to install anything in the basedir, if the application is installed in "ProgramFiles"
-                if (!string.IsNullOrWhiteSpace(programfiles) && !InstalledBaseDir.StartsWith(Library.Utility.Utility.AppendDirSeparator(programfiles)))
+                if (!string.IsNullOrWhiteSpace(programfiles) && !InstalledBaseDir.StartsWith(Library.Utility.Utility.AppendDirSeparator(programfiles), StringComparison.Ordinal))
                     attempts.Add(System.IO.Path.Combine(InstalledBaseDir, "updates"));
 
                 if (Library.Utility.Utility.IsClientOSX)
@@ -521,7 +521,7 @@ namespace Duplicati.Library.AutoUpdater
                                         continue;
 
                                     var fullpath = System.IO.Path.Combine(targetfolder, relpath);
-                                    if (relpath.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString()))
+                                    if (relpath.EndsWith(System.IO.Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
                                         System.IO.Directory.CreateDirectory(fullpath);
                                     else
                                         System.IO.File.Copy(e, fullpath);
@@ -613,7 +613,7 @@ namespace Duplicati.Library.AutoUpdater
                     if (string.IsNullOrWhiteSpace(relpath))
                         continue;
 
-                    if (IgnoreWebrootFolder && relpath.StartsWith("webroot"))
+                    if (IgnoreWebrootFolder && relpath.StartsWith("webroot", Library.Utility.Utility.ClientFilenameStringComparision))
                         continue;
 
                     FileEntry fe;
@@ -621,7 +621,7 @@ namespace Duplicati.Library.AutoUpdater
                     {
                         var ignore = false;
                         foreach(var c in ignores)
-                            if (ignore = relpath.StartsWith(c))
+                            if (ignore = relpath.StartsWith(c, Library.Utility.Utility.ClientFilenameStringComparision))
                                 break;
 
                         if (ignore)
@@ -632,7 +632,7 @@ namespace Duplicati.Library.AutoUpdater
 
                     paths.Remove(relpath);
 
-                    if (fe.Path.EndsWith("/"))
+                    if (fe.Path.EndsWith("/", StringComparison.Ordinal))
                         continue;
 
                     sha256.Initialize();
@@ -649,10 +649,11 @@ namespace Duplicati.Library.AutoUpdater
                     }
                 }
 
-                var filteredpaths = (from p in paths
-                        where !string.IsNullOrWhiteSpace(p.Key) && !p.Key.EndsWith("/")
-                        select p.Key).ToList();
-
+                var filteredpaths = paths
+                    .Where(p => !string.IsNullOrWhiteSpace(p.Key) && !p.Key.EndsWith("/", StringComparison.Ordinal))
+                    .Where(p => !IgnoreWebrootFolder || !p.Key.StartsWith("webroot", Library.Utility.Utility.ClientFilenameStringComparision))
+                    .Select(p => p.Key)
+                    .ToList();
 
                 if (filteredpaths.Count == 1)
                     throw new Exception(string.Format("Folder {0} is missing: {1}", folder, filteredpaths.First()));
@@ -747,7 +748,7 @@ namespace Duplicati.Library.AutoUpdater
                         if (ignoreMap.ContainsKey(relpath))
                             return false;
                     
-                        if (path.EndsWith(dirsep))
+                        if (path.EndsWith(dirsep, StringComparison.Ordinal))
                             return true;
 
                         using (var source = System.IO.File.OpenRead(path))
@@ -770,8 +771,8 @@ namespace Duplicati.Library.AutoUpdater
                                 select new FileEntry() {
                         Path = relpath,
                         LastWriteTime = System.IO.File.GetLastAccessTimeUtc(fse),
-                        MD5 = fse.EndsWith(dirsep) ? null : computeMD5(fse),
-                        SHA256 = fse.EndsWith(dirsep) ? null : computeSHA256(fse)
+                        MD5 = fse.EndsWith(dirsep, StringComparison.Ordinal) ? null : computeMD5(fse),
+                        SHA256 = fse.EndsWith(dirsep, StringComparison.Ordinal) ? null : computeSHA256(fse)
                     })
                 .Union(ignoreFiles).ToArray();
 
@@ -983,7 +984,7 @@ namespace Duplicati.Library.AutoUpdater
             {
                 try
                 {
-                    Console.WriteLine("Crash! {0}{1}", Environment.NewLine, tex.ToString());
+                    Console.WriteLine("Crash! {0}{1}", Environment.NewLine, tex);
                 }
                 catch
                 {
@@ -1055,8 +1056,8 @@ namespace Duplicati.Library.AutoUpdater
         public static int RunFromMostRecentSpawn(System.Reflection.MethodInfo method, string[] cmdargs, AutoUpdateStrategy defaultstrategy = AutoUpdateStrategy.CheckDuring)
         {
             // If the update is disabled, go straight in
-            //if (DISABLE_UPDATE_DOMAIN)
-            //    return RunMethod(method, cmdargs);
+            if (DISABLE_UPDATE_DOMAIN)
+                return RunMethod(method, cmdargs);
 
             // If we are not the primary entry, just execute
             if (IsRunningInUpdateEnvironment)
@@ -1069,9 +1070,8 @@ namespace Duplicati.Library.AutoUpdater
                 return r;
             }
 
-            var args = Environment.CommandLine;
             var app = Environment.GetCommandLineArgs().First();
-            args = args.Substring(app.Length);
+            var args = Library.Utility.Utility.WrapAsCommandLine(Environment.GetCommandLineArgs().Skip(1), false);
 
             if (!Path.IsPathRooted(app))
                 app = Path.Combine(InstalledBaseDir, app);
@@ -1215,9 +1215,8 @@ namespace Duplicati.Library.AutoUpdater
 
                         try
                         {
-                            var args = Environment.CommandLine;
                             var app = Environment.GetCommandLineArgs().First();
-                            args = args.Substring(app.Length);
+                            var args = Library.Utility.Utility.WrapAsCommandLine(Environment.GetCommandLineArgs().Skip(1), false);
 
                             if (!System.IO.Path.IsPathRooted(app))
                                 app = System.IO.Path.Combine(InstalledBaseDir, app);

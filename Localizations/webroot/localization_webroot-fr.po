@@ -1195,7 +1195,7 @@ msgstr "Échec d'installation :"
 
 #: scripts/services/EditUriBuiltins.js:771
 msgid "Invalid characters in path"
-msgstr ""
+msgstr "Caractères invalides dans le chemin"
 
 #: scripts/controllers/EditBackupController.js:250
 #: scripts/controllers/EditBackupController.js:257
@@ -1350,11 +1350,11 @@ msgstr "Bases de données Microsoft SQL"
 
 #: templates/backends/sia.html:14
 msgid "Minimum redundancy"
-msgstr ""
+msgstr "Redondance minimale"
 
 #: scripts/services/EditUriBuiltins.js:775
 msgid "Minimum redundancy is 1.0"
-msgstr ""
+msgstr "La redondance minimale est de 1,0"
 
 #: scripts/services/AppUtils.js:88 scripts/services/AppUtils.js:98
 #: templates/settings.html:32
@@ -1885,7 +1885,7 @@ msgstr ""
 
 #: templates/backends/sia.html:10
 msgid "Server password"
-msgstr ""
+msgstr "Mot de passe du serveur"
 
 #: scripts/controllers/HomeController.js:7
 msgid "Server paused"
@@ -1927,7 +1927,7 @@ msgstr "Afficher l'arborescence"
 
 #: templates/backends/sia.html:11
 msgid "Sia server password"
-msgstr ""
+msgstr "Mot de passe du serveur Sia"
 
 #: templates/backends/openstack.html:33
 msgid ""
@@ -2058,7 +2058,7 @@ msgstr "TByte/s"
 
 #: templates/backends/sia.html:7
 msgid "Target path, ie /backup"
-msgstr ""
+msgstr "Chemin cible, c'est-à-dire /sauvegarde"
 
 #: templates/waitarea.html:5
 msgid "Task is running"
@@ -2705,7 +2705,7 @@ msgstr ""
 
 #: scripts/controllers/StateController.js:50
 msgid "{{files}} files ({{size}}) to go {{speed_txt}}"
-msgstr ""
+msgstr "{{files}} fichiers {{size}}) à afficher {{speed_txt}}"
 
 #: templates/home.html:61 templates/restorewizard.html:23
 msgid "{{item.Backup.Metadata.TargetSizeString}} / {{$count}} Version"
