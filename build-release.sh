@@ -1,6 +1,6 @@
-RELEASE_TIMESTAMP=`date +%Y-%m-%d`
+RELEASE_TIMESTAMP=$(date +%Y-%m-%d)
 
-RELEASE_INC_VERSION=`cat Updates/build_version.txt`
+RELEASE_INC_VERSION=$(cat Updates/build_version.txt)
 RELEASE_INC_VERSION=$((RELEASE_INC_VERSION+1))
 
 if [ "x$1" == "x" ]; then
@@ -10,7 +10,7 @@ else
 	RELEASE_TYPE=$1
 fi
 
-RELEASE_VERSION="2.0.2.${RELEASE_INC_VERSION}"
+RELEASE_VERSION="2.0.4.${RELEASE_INC_VERSION}"
 RELEASE_NAME="${RELEASE_VERSION}_${RELEASE_TYPE}_${RELEASE_TIMESTAMP}"
 
 RELEASE_CHANGELOG_FILE="changelog.txt"
@@ -28,6 +28,7 @@ AUTHENTICODE_PFXFILE="${HOME}/.config/signkeys/Duplicati/authenticode.pfx"
 AUTHENTICODE_PASSWORD="${HOME}/.config/signkeys/Duplicati/authenticode.key"
 
 GITHUB_TOKEN_FILE="${HOME}/.config/github-api-token"
+DISCOURSE_TOKEN_FILE="${HOME}/.config/discourse-api-token"
 XBUILD=/Library/Frameworks/Mono.framework/Commands/msbuild
 NUGET=/Library/Frameworks/Mono.framework/Commands/nuget
 MONO=/Library/Frameworks/Mono.framework/Commands/mono
@@ -95,9 +96,10 @@ if [ "z${KEYFILE_PASSWORD}" == "z" ]; then
 	exit 0
 fi
 
-RELEASE_CHANGEINFO_NEWS=`cat "${RELEASE_CHANGELOG_NEWS_FILE}"`
+RELEASE_CHANGEINFO_NEWS=$(cat "${RELEASE_CHANGELOG_NEWS_FILE}")
 
 git stash save "${GIT_STASH_NAME}"
+git pull
 
 if [ ! "x${RELEASE_CHANGEINFO_NEWS}" == "x" ]; then
 
@@ -115,7 +117,7 @@ echo "${RELEASE_TYPE}" > "Duplicati/Library/AutoUpdater/AutoUpdateBuildChannel.t
 echo "${UPDATE_MANIFEST_URLS}" > "Duplicati/Library/AutoUpdater/AutoUpdateURL.txt"
 cp "Updates/release_key.txt"  "Duplicati/Library/AutoUpdater/AutoUpdateSignKey.txt"
 
-RELEASE_CHANGEINFO=`cat ${RELEASE_CHANGELOG_FILE}`
+RELEASE_CHANGEINFO=$(cat ${RELEASE_CHANGELOG_FILE})
 if [ "x${RELEASE_CHANGEINFO}" == "x" ]; then
     echo "No information in changeinfo file"
     exit 0
@@ -127,9 +129,12 @@ rm -rf "Duplicati/GUI/Duplicati.GUI.TrayIcon/bin/Release"
 "${MONO}" "BuildTools/UpdateVersionStamp/bin/Release/UpdateVersionStamp.exe" --version="${RELEASE_VERSION}"
 
 "${NUGET}" restore "BuildTools/AutoUpdateBuilder/AutoUpdateBuilder.sln"
+"${NUGET}" restore "BuildTools/GnupgSigningTool/GnupgSigningTool.sln"
 "${NUGET}" restore "Duplicati.sln"
 
 "${XBUILD}" /p:Configuration=Debug "BuildTools/AutoUpdateBuilder/AutoUpdateBuilder.sln"
+
+"${XBUILD}" /p:Configuration=Debug "BuildTools/GnupgSigningTool/GnupgSigningTool.sln"
 
 "${XBUILD}" /p:Configuration=Release /target:Clean "Duplicati.sln"
 find "Duplicati" -type d -name "Release" | xargs rm -rf
@@ -173,12 +178,12 @@ find "${UPDATE_SOURCE}" -type f -name Duplicati.*.exe -maxdepth 1 -exec cp Insta
 
 # Clean some unwanted build files
 for FILE in "control_dir" "Duplicati-server.sqlite" "Duplicati.debug.log" "updates"; do
-	if [ -e "${UPDATE_SOURCE}/${FILE}" ]; then rm -rf "${UPDATE_SOURCE}/${FILE}"; fi	
+	if [ -e "${UPDATE_SOURCE}/${FILE}" ]; then rm -rf "${UPDATE_SOURCE}/${FILE}"; fi
 done
 
 # Clean the localization spam from Azure
 for FILE in "de" "es" "fr" "it" "ja" "ko" "ru" "zh-Hans" "zh-Hant"; do
-	if [ -e "${UPDATE_SOURCE}/${FILE}" ]; then rm -rf "${UPDATE_SOURCE}/${FILE}"; fi	
+	if [ -e "${UPDATE_SOURCE}/${FILE}" ]; then rm -rf "${UPDATE_SOURCE}/${FILE}"; fi
 done
 
 # Clean debug files, if any
@@ -199,14 +204,14 @@ if [ -f "${AUTHENTICODE_PFXFILE}" ] && [ -f "${AUTHENTICODE_PASSWORD}" ]; then
 	authenticode_sign() {
 		NEST=""
 		for hashalg in sha1 sha256; do
-			SIGN_MSG=`osslsigncode sign -pkcs12 "${AUTHENTICODE_PFXFILE}" -pass "${PFX_PASS}" -n "Duplicati" -i "http://www.duplicati.com" -h "${hashalg}" ${NEST} -t "http://timestamp.verisign.com/scripts/timstamp.dll" -in "$1" -out tmpfile`
+			SIGN_MSG=$(osslsigncode sign -pkcs12 "${AUTHENTICODE_PFXFILE}" -pass "${PFX_PASS}" -n "Duplicati" -i "http://www.duplicati.com" -h "${hashalg}" ${NEST} -t "http://timestamp.verisign.com/scripts/timstamp.dll" -in "$1" -out tmpfile)
 			if [ "${SIGN_MSG}" != "Succeeded" ]; then echo "${SIGN_MSG}"; fi
 			mv tmpfile "$1"
 			NEST="-nest"
 		done
 	}
 
-	PFX_PASS=`"${MONO}" "BuildTools/AutoUpdateBuilder/bin/Debug/SharpAESCrypt.exe" d "${KEYFILE_PASSWORD}" "${AUTHENTICODE_PASSWORD}"`
+	PFX_PASS=$("${MONO}" "BuildTools/AutoUpdateBuilder/bin/Debug/SharpAESCrypt.exe" d "${KEYFILE_PASSWORD}" "${AUTHENTICODE_PASSWORD}")
 
 	DECRYPT_STATUS=$?
 	if [ "${DECRYPT_STATUS}" -ne 0 ]; then
@@ -233,14 +238,30 @@ fi
 echo
 echo "Building signed package ..."
 
-"${MONO}" "BuildTools/AutoUpdateBuilder/bin/Debug/AutoUpdateBuilder.exe" --input="${UPDATE_SOURCE}" --output="${UPDATE_TARGET}" --keyfile="${UPDATER_KEYFILE}" --manifest=Updates/${RELEASE_TYPE}.manifest --changeinfo="${RELEASE_CHANGEINFO}" --displayname="${RELEASE_NAME}" --remoteurls="${UPDATE_ZIP_URLS}" --version="${RELEASE_VERSION}" --keyfile-password="${KEYFILE_PASSWORD}" --gpgkeyfile="${GPG_KEYFILE}" --gpgpath="${GPG}"
+"${MONO}" "BuildTools/AutoUpdateBuilder/bin/Debug/AutoUpdateBuilder.exe" --input="${UPDATE_SOURCE}" \
+--output="${UPDATE_TARGET}" --keyfile="${UPDATER_KEYFILE}" \
+--manifest=Updates/${RELEASE_TYPE}.manifest --changeinfo="${RELEASE_CHANGEINFO}" \
+--displayname="${RELEASE_NAME}" --remoteurls="${UPDATE_ZIP_URLS}" \
+--version="${RELEASE_VERSION}" --keyfile-password="${KEYFILE_PASSWORD}"
 
 if [ ! -f "${UPDATE_TARGET}/package.zip" ]; then
-	"${MONO}" "BuildTools/UpdateVersionStamp/bin/Debug/UpdateVersionStamp.exe" --version="2.0.0.7"	
-	
+	"${MONO}" "BuildTools/UpdateVersionStamp/bin/Debug/UpdateVersionStamp.exe" --version="2.0.0.7"
+
 	echo "Something went wrong while building the package, no output found"
 	exit 5
 fi
+
+"${MONO}" "BuildTools/GnupgSigningTool/bin/Debug/GnupgSigningTool.exe" \
+--inputfile=\"${UPDATE_TARGET}/package.zip\" \
+--signaturefile=\"${UPDATE_TARGET}/package.zip.sig\" \
+--armor=false --gpgkeyfile="${GPG_KEYFILE}" --gpgpath="${GPG}" \
+--keyfile-password="${KEYFILE_PASSWORD}"
+
+"${MONO}" "BuildTools/GnupgSigningTool/bin/Debug/GnupgSigningTool.exe" \
+--inputfile=\"${UPDATE_TARGET}/package.zip\" \
+--signaturefile=\"${UPDATE_TARGET}/package.zip.sig.asc\" \
+--armor=true --gpgkeyfile="${GPG_KEYFILE}" --gpgpath="${GPG}" \
+--keyfile-password="${KEYFILE_PASSWORD}"
 
 echo "${RELEASE_INC_VERSION}" > "Updates/build_version.txt"
 
@@ -263,9 +284,9 @@ aws --profile=duplicati-upload s3 cp "${UPDATE_TARGET}/${RELEASE_FILE_NAME}.mani
 
 aws --profile=duplicati-upload s3 cp "s3://updates.duplicati.com/${RELEASE_TYPE}/${RELEASE_FILE_NAME}.manifest" "s3://updates.duplicati.com/${RELEASE_TYPE}/latest.manifest"
 
-ZIP_MD5=`md5 ${UPDATE_TARGET}/${RELEASE_FILE_NAME}.zip | awk -F ' ' '{print $NF}'`
-ZIP_SHA1=`shasum -a 1 ${UPDATE_TARGET}/${RELEASE_FILE_NAME}.zip | awk -F ' ' '{print $1}'`
-ZIP_SHA256=`shasum -a 256 ${UPDATE_TARGET}/${RELEASE_FILE_NAME}.zip | awk -F ' ' '{print $1}'`
+ZIP_MD5=$(md5 ${UPDATE_TARGET}/${RELEASE_FILE_NAME}.zip | awk -F ' ' '{print $NF}')
+ZIP_SHA1=$(shasum -a 1 ${UPDATE_TARGET}/${RELEASE_FILE_NAME}.zip | awk -F ' ' '{print $1}')
+ZIP_SHA256=$(shasum -a 256 ${UPDATE_TARGET}/${RELEASE_FILE_NAME}.zip | awk -F ' ' '{print $1}')
 
 cat > "latest.json" <<EOF
 {
@@ -311,11 +332,11 @@ if [ "${RELEASE_TYPE}" == "stable" ]; then
 	PRE_RELEASE_LABEL=""
 fi
 
-RELEASE_MESSAGE=`printf "Changes in this version:\n${RELEASE_CHANGEINFO_NEWS}"`
+RELEASE_MESSAGE=$(printf "Changes in this version:\n${RELEASE_CHANGEINFO_NEWS}")
 
 # Using the tool from https://github.com/aktau/github-release
 
-GITHUB_TOKEN=`cat "${GITHUB_TOKEN_FILE}"`
+GITHUB_TOKEN=$(cat "${GITHUB_TOKEN_FILE}")
 
 if [ "x${GITHUB_TOKEN}" == "x" ]; then
 	echo "No GITHUB_TOKEN found in environment, you can manually upload the binaries"
@@ -336,6 +357,31 @@ else
 	    --security-token "${GITHUB_TOKEN}" \
 	    --file "${UPDATE_TARGET}/${RELEASE_FILE_NAME}.zip"
 fi
+
+
+DISCOURSE_TOKEN=$(cat "${DISCOURSE_TOKEN_FILE}")
+
+if [ "x${DISCOURSE_TOKEN}" == "x" ]; then
+	echo "No DISCOURSE_TOKEN found in environment, you can manually create the post on the forum"
+else
+
+	body="# [${RELEASE_VERSION}-${RELEASE_NAME}](https://github.com/duplicati/duplicati/releases/tag/v${RELEASE_VERSION}-${RELEASE_NAME})
+
+${RELEASE_CHANGEINFO_NEWS}
+"
+
+	DISCOURSE_USERNAME=$(echo "${DISCOURSE_TOKEN}" | cut -d ":" -f 1)
+	DISCOURSE_APIKEY=$(echo "${DISCOURSE_TOKEN}" | cut -d ":" -f 2)
+
+	curl -X POST "https://forum.duplicati.com/posts" \
+		-F "api_key=${DISCOURSE_APIKEY}" \
+		-F "api_username=${DISCOURSE_USERNAME}" \
+		-F "category=Releases" \
+		-F "title=Release: ${RELEASE_VERSION} (${RELEASE_TYPE}) ${RELEASE_TIMESTAMP}" \
+		-F "raw=${body}"
+fi
+
+git push
 
 echo
 echo "Built ${RELEASE_TYPE} version: ${RELEASE_VERSION} - ${RELEASE_NAME}"

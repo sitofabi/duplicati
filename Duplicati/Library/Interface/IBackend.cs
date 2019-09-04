@@ -19,7 +19,8 @@
 #endregion
 using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Duplicati.Library.Interface
 {
@@ -56,7 +57,8 @@ namespace Duplicati.Library.Interface
         /// </summary>
         /// <param name="remotename">The remote filename, relative to the URL</param>
         /// <param name="filename">The local filename</param>
-        void Put(string remotename, string filename);
+        /// <param name="cancelToken">Token to cancel the operation.</param>
+        Task PutAsync(string remotename, string filename, CancellationToken cancelToken);
 
         /// <summary>
         /// Downloads a file with the remote data
@@ -80,6 +82,11 @@ namespace Duplicati.Library.Interface
         /// A localized description of the backend, for display in the usage information
         /// </summary>
         string Description { get; }
+
+        /// <summary>
+        /// The DNS names used to resolve the IP addresses for this backend
+        /// </summary>
+        string[] DNSName { get; }
 
         /// <summary>
         /// The purpose of this method is to test the connection to the remote backend.

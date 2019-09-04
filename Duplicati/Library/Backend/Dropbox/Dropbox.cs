@@ -1,17 +1,20 @@
-﻿using System;
+﻿using Duplicati.Library.Common.IO;
+using Duplicati.Library.Interface;
+using System;
 using System.Collections.Generic;
 using System.IO;
-using Duplicati.Library.Interface;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Duplicati.Library.Backend
 {
     public class Dropbox : IBackend, IStreamingBackend
     {
         private const string AUTHID_OPTION = "authid";
-        private const int MAX_FILE_LIST = 10000;
 
-        private string m_path,m_accesToken;
-        private DropboxHelper dbx;
+        private readonly string m_accesToken;
+        private readonly string m_path;
+        private readonly DropboxHelper dbx;
 
         public Dropbox()
         {
@@ -49,7 +52,7 @@ namespace Duplicati.Library.Backend
             get { return "dropbox"; }
         }
 
-        private FileEntry ParseEntry(MetaData md)
+        private IFileEntry ParseEntry(MetaData md)
         {
             var ife = new FileEntry(md.name);
             if (md.IsFile)
@@ -98,15 +101,15 @@ namespace Duplicati.Library.Backend
             }
         }
 
-        public void Put(string remotename, string filename)
+        public Task PutAsync(string remotename, string filename, CancellationToken cancelToken)
         {
-            using(FileStream fs = System.IO.File.OpenRead(filename))
-                Put(remotename,fs);
+            using(FileStream fs = File.OpenRead(filename))
+                return PutAsync(remotename, fs, cancelToken);
         }
 
         public void Get(string remotename, string filename)
         {
-            using(FileStream fs = System.IO.File.Create(filename))
+            using(FileStream fs = File.Create(filename))
                 Get(remotename, fs);
         }
 
@@ -117,7 +120,7 @@ namespace Duplicati.Library.Backend
                 string path = String.Format("{0}/{1}", m_path, remotename);
                 dbx.Delete(path);
             }
-            catch (DropboxException de)
+            catch (DropboxException)
             {
                 // we can catch some events here and convert them to Duplicati exceptions
                 throw;
@@ -135,6 +138,11 @@ namespace Duplicati.Library.Backend
         }
 
         public string Description { get { return Strings.Dropbox.Description; } }
+
+        public string[] DNSName
+        {
+            get { return WebApi.Dropbox.Hosts(); }
+        }
 
         public void Test()
         {
@@ -156,14 +164,14 @@ namespace Duplicati.Library.Backend
             }
         }
 
-        public void Put(string remotename, Stream stream)
+        public async Task PutAsync(string remotename, Stream stream, CancellationToken cancelToken)
         {
             try
             {
-                string path = string.Format("{0}/{1}", m_path, remotename);
-                dbx.UploadFile(path, stream);
+                string path = $"{m_path}/{remotename}";
+                await dbx.UploadFileAsync(path, stream, cancelToken);
             }
-            catch (DropboxException de)
+            catch (DropboxException)
             {
                 // we can catch some events here and convert them to Duplicati exceptions
                 throw;
@@ -177,7 +185,7 @@ namespace Duplicati.Library.Backend
                 string path = string.Format("{0}/{1}", m_path, remotename);
                 dbx.DownloadFile(path, stream);
             }
-            catch (DropboxException de)
+            catch (DropboxException)
             {
                 // we can catch some events here and convert them to Duplicati exceptions
                 throw;

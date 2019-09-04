@@ -40,7 +40,7 @@ namespace Duplicati.Library.Main.Database
         public string GetRemoteVolumeNameForFileset(long id, System.Data.IDbTransaction transaction)
         {
             using (var cmd = m_connection.CreateCommand(transaction))
-            using (var rd = cmd.ExecuteReader(string.Format(@"SELECT ""B"".""Name"" FROM ""Fileset"" A, ""RemoteVolume"" B WHERE ""A"".""VolumeID"" = ""B"".""ID"" AND ""A"".""ID"" = ? "), id))
+            using (var rd = cmd.ExecuteReader(@"SELECT ""B"".""Name"" FROM ""Fileset"" A, ""RemoteVolume"" B WHERE ""A"".""VolumeID"" = ""B"".""ID"" AND ""A"".""ID"" = ? ", id))
                 if (!rd.Read())
                     throw new Exception(string.Format("No remote volume found for fileset with id {0}", id));
                 else
@@ -50,7 +50,7 @@ namespace Duplicati.Library.Main.Database
         internal long CountOrphanFiles(System.Data.IDbTransaction transaction)
         {
             using (var cmd = m_connection.CreateCommand(transaction))
-            using (var rd = cmd.ExecuteReader(@"SELECT COUNT(*) FROM ""File"" WHERE ""ID"" NOT IN (SELECT DISTINCT ""FileID"" FROM ""FilesetEntry"")"))
+            using (var rd = cmd.ExecuteReader(@"SELECT COUNT(*) FROM ""FileLookup"" WHERE ""ID"" NOT IN (SELECT DISTINCT ""FileID"" FROM ""FilesetEntry"")"))
                 if (rd.Read())
                     return rd.ConvertValueToInt64(0, 0);
                 else
@@ -74,7 +74,7 @@ namespace Duplicati.Library.Main.Database
             private readonly System.Data.IDbConnection m_connection;
             private readonly System.Data.IDbTransaction m_transaction;
             private readonly string m_tablename;
-            private LocalPurgeDatabase m_parentdb;
+            private readonly LocalPurgeDatabase m_parentdb;
 
             public long ParentID { get; private set; }
             public long RemovedFileCount { get; private set; }
@@ -156,10 +156,10 @@ namespace Duplicati.Library.Main.Database
                 using (var cmd = m_connection.CreateCommand(m_transaction))
                 {
                     RemovedFileCount = cmd.ExecuteScalarInt64(string.Format(@"SELECT COUNT(*) FROM ""{0}""", m_tablename), 0);
-                    RemovedFileSize = cmd.ExecuteScalarInt64(string.Format(@"SELECT SUM(""C"".""Length"") FROM ""{0}"" A, ""File"" B, ""Blockset"" C WHERE ""A"".""FileID"" = ""B"".""ID"" AND ""B"".""BlocksetID"" = ""C"".""ID"" ", m_tablename), 0);
+                    RemovedFileSize = cmd.ExecuteScalarInt64(string.Format(@"SELECT SUM(""C"".""Length"") FROM ""{0}"" A, ""FileLookup"" B, ""Blockset"" C WHERE ""A"".""FileID"" = ""B"".""ID"" AND ""B"".""BlocksetID"" = ""C"".""ID"" ", m_tablename), 0);
                     var filesetcount = cmd.ExecuteScalarInt64(string.Format(@"SELECT COUNT(*) FROM ""FilesetEntry"" WHERE ""FilesetID"" = " + ParentID), 0);
                     if (filesetcount == RemovedFileCount)
-                        throw new Duplicati.Library.Interface.UserInformationException(string.Format("Refusing to purge {0} files from fileset with ID {1}, as that would remove the entire fileset.\nTo delete a fileset, use the \"delete\" command.", RemovedFileCount, ParentID));
+                        throw new Duplicati.Library.Interface.UserInformationException(string.Format("Refusing to purge {0} files from fileset with ID {1}, as that would remove the entire fileset.\nTo delete a fileset, use the \"delete\" command.", RemovedFileCount, ParentID), "PurgeWouldRemoveEntireFileset");
                 }
             }
 

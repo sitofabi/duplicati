@@ -17,20 +17,21 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 // 
 #endregion
-using System;
-using System.Collections.Generic;
-using System.Text;
+using Duplicati.Library.Common.IO;
 using Duplicati.Library.Interface;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System.Linq;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Duplicati.Library.Backend
 {
     public class TahoeBackend : IBackend, IStreamingBackend
     {
-        private string m_url;
-        private bool m_useSSL = false;
+        private readonly string m_url;
+        private readonly bool m_useSSL = false;
         private readonly byte[] m_copybuffer = new byte[Duplicati.Library.Utility.Utility.DEFAULT_BUFFER_SIZE];
 
         private class TahoeEl
@@ -100,13 +101,12 @@ namespace Duplicati.Library.Backend
             u.RequireHost();
             
             if (!u.Path.StartsWith("uri/URI:DIR2:", StringComparison.Ordinal) && !u.Path.StartsWith("uri/URI%3ADIR2%3A", StringComparison.Ordinal))
-                throw new UserInformationException(Strings.TahoeBackend.UnrecognizedUriError);
+                throw new UserInformationException(Strings.TahoeBackend.UnrecognizedUriError, "TahoeInvalidUri");
 
             m_useSSL = Utility.Utility.ParseBoolOption(options, "use-ssl");
 
             m_url = u.SetScheme(m_useSSL ? "https" : "http").SetQuery(null).SetCredentials(null, null).ToString();
-            if (!m_url.EndsWith("/", StringComparison.Ordinal))
-                m_url += "/";
+            m_url = Util.AppendDirSeparator(m_url, "/");
         }
 
         private System.Net.HttpWebRequest CreateRequest(string remotename, string queryparams)
@@ -208,10 +208,10 @@ namespace Duplicati.Library.Backend
             }
         }
 
-        public void Put(string remotename, string filename)
+        public Task PutAsync(string remotename, string filename, CancellationToken cancelToken)
         {
             using (System.IO.FileStream fs = System.IO.File.OpenRead(filename))
-                Put(remotename, fs);
+                return PutAsync(remotename, fs, cancelToken);
         }
 
         public void Get(string remotename, string filename)
@@ -254,6 +254,11 @@ namespace Duplicati.Library.Backend
             get { return Strings.TahoeBackend.Description; }
         }
 
+        public string[] DNSName
+        {
+            get { return new string[] { new Uri(m_url).Host }; }
+        }
+
         #endregion
 
         #region IDisposable Members
@@ -266,7 +271,7 @@ namespace Duplicati.Library.Backend
 
         #region IStreamingBackend Members
 
-        public void Put(string remotename, System.IO.Stream stream)
+        public async Task PutAsync(string remotename, System.IO.Stream stream, CancellationToken cancelToken)
         {
             try
             {
@@ -279,7 +284,7 @@ namespace Duplicati.Library.Backend
 
                 Utility.AsyncHttpRequest areq = new Utility.AsyncHttpRequest(req);
                 using (System.IO.Stream s = areq.GetRequestStream())
-                    Utility.Utility.CopyStream(stream, s, true, m_copybuffer);
+                    await Utility.Utility.CopyStreamAsync(stream, s, true, cancelToken, m_copybuffer);
 
                 using (System.Net.HttpWebResponse resp = (System.Net.HttpWebResponse)areq.GetResponse())
                 {

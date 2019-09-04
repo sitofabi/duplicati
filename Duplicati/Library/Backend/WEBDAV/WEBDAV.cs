@@ -1,4 +1,4 @@
-#region Disclaimer / License
+﻿#region Disclaimer / License
 // Copyright (C) 2015, The Duplicati Team
 // http://www.duplicati.com, info@duplicati.com
 // 
@@ -17,26 +17,29 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 // 
 #endregion
+using Duplicati.Library.Common.IO;
+using Duplicati.Library.Interface;
 using System;
 using System.Collections.Generic;
-using System.Text;
-using Duplicati.Library.Interface;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Duplicati.Library.Backend
 {
     public class WEBDAV : IBackend, IStreamingBackend
     {
-        private System.Net.NetworkCredential m_userInfo;
-        private string m_url;
-        private string m_path;
-        private string m_sanitizedUrl;
-        private string m_reverseProtocolUrl;
-        private string m_rawurl;
-        private string m_rawurlPort;
-        private bool m_useIntegratedAuthentication = false;
-        private bool m_forceDigestAuthentication = false;
-        private bool m_useSSL = false;
-        private string m_debugPropfindFile = null;
+        private readonly System.Net.NetworkCredential m_userInfo;
+        private readonly string m_url;
+        private readonly string m_path;
+        private readonly string m_sanitizedUrl;
+        private readonly string m_reverseProtocolUrl;
+        private readonly string m_rawurl;
+        private readonly string m_rawurlPort;
+        private readonly string m_dnsName;
+        private readonly bool m_useIntegratedAuthentication = false;
+        private readonly bool m_forceDigestAuthentication = false;
+        private readonly bool m_useSSL = false;
+        private readonly string m_debugPropfindFile = null;
         private readonly byte[] m_copybuffer = new byte[Duplicati.Library.Utility.Utility.DEFAULT_BUFFER_SIZE];
 
         /// <summary>
@@ -61,6 +64,7 @@ namespace Duplicati.Library.Backend
         {
             var u = new Utility.Uri(url);
             u.RequireHost();
+            m_dnsName = u.Host;
 
             if (!string.IsNullOrEmpty(u.Username))
             {
@@ -91,14 +95,12 @@ namespace Duplicati.Library.Backend
             m_useSSL = Utility.Utility.ParseBoolOption(options, "use-ssl");
 
             m_url = u.SetScheme(m_useSSL ? "https" : "http").SetCredentials(null, null).SetQuery(null).ToString();
-            if (!m_url.EndsWith("/", StringComparison.Ordinal))
-                m_url += "/";
+            m_url = Util.AppendDirSeparator(m_url, "/");
 
             m_path = u.Path;
             if (!m_path.StartsWith("/", StringComparison.Ordinal))
                 m_path = "/" + m_path;
-            if (!m_path.EndsWith("/", StringComparison.Ordinal))
-                m_path += "/";
+            m_path = Util.AppendDirSeparator(m_path, "/");
 
             m_path = Library.Utility.Uri.UrlDecode(m_path);
             m_rawurl = new Utility.Uri(m_useSSL ? "https" : "http", u.Host, m_path).ToString();
@@ -138,9 +140,9 @@ namespace Duplicati.Library.Backend
                     throw new Interface.FolderMissingException(Strings.WEBDAV.MissingFolderError(m_path, wex.Message), wex);
 
                 if (wex.Response as System.Net.HttpWebResponse != null && (wex.Response as System.Net.HttpWebResponse).StatusCode == System.Net.HttpStatusCode.MethodNotAllowed)
-                    throw new UserInformationException(Strings.WEBDAV.MethodNotAllowedError((wex.Response as System.Net.HttpWebResponse).StatusCode), wex);
+                    throw new UserInformationException(Strings.WEBDAV.MethodNotAllowedError((wex.Response as System.Net.HttpWebResponse).StatusCode), "WebdavMethodNotAllowed", wex);
 
-                    throw;
+                throw;
             }
         }
 
@@ -246,15 +248,17 @@ namespace Duplicati.Library.Backend
 
                 FileEntry fe = new FileEntry(name, size, lastAccess, lastModified);
                 fe.IsFolder = isCollection;
+                files.Add(fe);
                 m_filenamelist.Add(name);
-                yield return fe;
             }
+            
+            return files;
         }
 
-        public void Put(string remotename, string filename)
+        public Task PutAsync(string remotename, string filename, CancellationToken cancelToken)
         {
             using (System.IO.FileStream fs = System.IO.File.OpenRead(filename))
-                Put(remotename, fs);
+                return PutAsync(remotename, fs, cancelToken);
         }
 
         public void Get(string remotename, string filename)
@@ -309,9 +313,14 @@ namespace Duplicati.Library.Backend
             get { return Strings.WEBDAV.Description; }
         }
 
+        public string[] DNSName 
+        {
+            get { return new string[] { m_dnsName }; }
+        }
+
         public void Test()
         {
-            this.TestList();
+            this.List();
         }
 
         public void CreateFolder()
@@ -367,7 +376,7 @@ namespace Duplicati.Library.Backend
 
         #region IStreamingBackend Members
 
-        public void Put(string remotename, System.IO.Stream stream)
+        public async Task PutAsync(string remotename, System.IO.Stream stream, CancellationToken cancelToken)
         {
             try
             {
@@ -380,7 +389,7 @@ namespace Duplicati.Library.Backend
 
                 Utility.AsyncHttpRequest areq = new Utility.AsyncHttpRequest(req);
                 using (System.IO.Stream s = areq.GetRequestStream())
-                    Utility.Utility.CopyStream(stream, s, true, m_copybuffer);
+                    await Utility.Utility.CopyStreamAsync(stream, s, true, cancelToken, m_copybuffer);
 
                 using (System.Net.HttpWebResponse resp = (System.Net.HttpWebResponse)areq.GetResponse())
                 {
