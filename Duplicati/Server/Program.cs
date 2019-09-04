@@ -1,12 +1,23 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
-using System.Text;
+using Duplicati.Library.Common;
+using Duplicati.Library.Common.IO;
 
 namespace Duplicati.Server
 {
     public class Program
     {
+
+        private static readonly List<string> AlternativeHelpStrings = new List<string> { "help", "/help", "usage", "/usage", "--help" };
+
+        private static readonly List<string> ParameterFileOptionStrings = new List<string> { "parameters-file", "parameterfile" };
+
+        /// <summary>
+        /// The log tag for messages from this class
+        /// </summary>
+        private static readonly string LOGTAG = Library.Logging.Log.LogTagFromType<Program>();
         /// <summary>
         /// The path to the directory that contains the main executable
         /// </summary>
@@ -15,27 +26,22 @@ namespace Duplicati.Server
         /// <summary>
         /// The name of the environment variable that holds the path to the data folder used by Duplicati
         /// </summary>
-        public static readonly string DATAFOLDER_ENV_NAME = Duplicati.Library.AutoUpdater.AutoUpdateSettings.AppName.ToUpper() + "_HOME";
+        private static readonly string DATAFOLDER_ENV_NAME = Duplicati.Library.AutoUpdater.AutoUpdateSettings.AppName.ToUpper(CultureInfo.InvariantCulture) + "_HOME";
 
         /// <summary>
         /// The environment variable that holdes the database key used to encrypt the SQLite database
         /// </summary>
-        public static readonly string DB_KEY_ENV_NAME = Duplicati.Library.AutoUpdater.AutoUpdateSettings.AppName.ToUpper() + "_DB_KEY";
+        private static readonly string DB_KEY_ENV_NAME = Duplicati.Library.AutoUpdater.AutoUpdateSettings.AppName.ToUpper(CultureInfo.InvariantCulture) + "_DB_KEY";
 
         /// <summary>
         /// Gets the folder where Duplicati data is stored
         /// </summary>
-        public static string DATAFOLDER { get { return Library.Utility.Utility.AppendDirSeparator(Library.Utility.Utility.ExpandEnvironmentVariables("%" + DATAFOLDER_ENV_NAME + "%").TrimStart('"').TrimEnd('"')); } }
+        public static string DataFolder { get; private set; }
 
         /// <summary>
         /// The single instance
         /// </summary>
-        public static SingleInstance Instance = null;
-
-        /// <summary>
-        /// A flag indicating if database encryption is in use
-        /// </summary>
-        public static bool UseDatabaseEncryption;
+        public static SingleInstance ApplicationInstance = null;
 
         /// <summary>
         /// This is the only access to the database
@@ -45,7 +51,7 @@ namespace Duplicati.Server
         /// <summary>
         /// This is the lock to be used before manipulating the shared resources
         /// </summary>
-        public static object MainLock = new object();
+        public static readonly object MainLock = new object();
 
         /// <summary>
         /// This is the scheduling thread
@@ -70,12 +76,12 @@ namespace Duplicati.Server
         /// <summary>
         /// The thread running the ping-pong handler
         /// </summary>
-        public static System.Threading.Thread PingPongThread;
+        private static System.Threading.Thread PingPongThread;
 
         /// <summary>
         /// The path to the file that contains the current database
         /// </summary>
-        public static string DatabasePath;
+        private static string DatabasePath;
 
         /// <summary>
         /// The controller interface for pause/resume and throttle options
@@ -90,13 +96,13 @@ namespace Duplicati.Server
         /// <summary>
         /// The webserver instance
         /// </summary>
-        public static WebServer.Server WebServer;
+        private static WebServer.Server WebServer;
 
         /// <summary>
         /// The update poll thread.
         /// </summary>
         public static UpdatePollThread UpdatePoller;
-        
+
         /// <summary>
         /// An event that is set once the server is ready to respond to requests
         /// </summary>
@@ -106,7 +112,7 @@ namespace Duplicati.Server
         /// The status event signaler, used to controll long polling of status updates
         /// </summary>
         public static EventPollNotify StatusEventNotifyer = new EventPollNotify();
-        
+
         /// <summary>
         /// A delegate method for creating a copy of the current progress state
         /// </summary>
@@ -127,6 +133,11 @@ namespace Duplicati.Server
         /// </summary>
         public static LogWriteHandler LogHandler = new LogWriteHandler();
 
+        /// <summary>
+        /// Used to check the origin of the web server (e.g. Tray icon or a stand alone Server)
+        /// </summary>
+        public static string Origin = "Server";
+
         private static System.Threading.Timer PurgeTempFilesTimer = null;
 
         public static int ServerPort
@@ -141,6 +152,12 @@ namespace Duplicati.Server
         {
             get { return DataConnection.ApplicationSettings.IsFirstRun; }
             set { DataConnection.ApplicationSettings.IsFirstRun = value; }
+        }
+
+        public static string StartedBy
+        {
+            get { return Origin; }
+            set { Origin = value; }
         }
 
         public static bool ServerPortChanged
@@ -158,11 +175,11 @@ namespace Duplicati.Server
             return Duplicati.Library.AutoUpdater.UpdaterManager.RunFromMostRecent(typeof(Program).GetMethod("RealMain"), args, Duplicati.Library.AutoUpdater.AutoUpdateStrategy.Never);
         }
 
-        public static void RealMain(string[] args)
+        public static int RealMain(string[] _args)
         {
             //If we are on Windows, append the bundled "win-tools" programs to the search path
             //We add it last, to allow the user to override with other versions
-            if (Library.Utility.Utility.IsClientWindows)
+            if (Platform.IsClientWindows)
             {
                 Environment.SetEnvironmentVariable("PATH",
                     Environment.GetEnvironmentVariable("PATH") +
@@ -174,333 +191,74 @@ namespace Duplicati.Server
             }
 
             //If this executable is invoked directly, write to console, otherwise throw exceptions
-            bool writeConsole = System.Reflection.Assembly.GetEntryAssembly() == System.Reflection.Assembly.GetExecutingAssembly();
-
-            //If we are on windows we encrypt the database by default
-            //We do not encrypt on Linux as most distros use a SQLite library without encryption support,
-            //Linux users can use an encrypted home folder, or install a SQLite library with encryption support
-            if (!Library.Utility.Utility.IsClientLinux && string.IsNullOrEmpty(Environment.GetEnvironmentVariable(DB_KEY_ENV_NAME)))
-            {
-                //Note that the password here is a default password and public knowledge
-                //
-                //The purpose of this is to prevent casual read of the database, as well
-                // as protect from harddisk string scans, not to protect from determined
-                // attacks.
-                //
-                //If you desire better security, start Duplicati once with the commandline option
-                // --unencrypted-database to decrypt the database.
-                //Then set the environment variable DUPLICATI_DB_KEY to the desired key, 
-                // and run Duplicati again without the --unencrypted-database option 
-                // to re-encrypt it with the new key
-                //
-                //If you change the key, please note that you need to supply the same
-                // key when restoring the setup, as the setup being backed up will
-                // be encrypted as well.
-                Environment.SetEnvironmentVariable(DB_KEY_ENV_NAME, Library.AutoUpdater.AutoUpdateSettings.AppName + "_Key_42");
-            }
-
+            var writeToConsole = System.Reflection.Assembly.GetEntryAssembly() == System.Reflection.Assembly.GetExecutingAssembly();
 
             //Find commandline options here for handling special startup cases
-            Dictionary<string, string> commandlineOptions = Duplicati.Library.Utility.CommandLineParser.ExtractOptions(new List<string>(args));
+            var args = new List<string>(_args);
+            var optionsWithFilter = Library.Utility.FilterCollector.ExtractOptions(new List<string>(args));
+            var commandlineOptions = optionsWithFilter.Item1;
+            var filter = optionsWithFilter.Item2;
 
-            foreach(string s in args)
-                if (
-                    s.Equals("help", StringComparison.InvariantCultureIgnoreCase) ||
-                    s.Equals("/help", StringComparison.InvariantCultureIgnoreCase) ||
-                    s.Equals("usage", StringComparison.InvariantCultureIgnoreCase) ||
-                    s.Equals("/usage", StringComparison.InvariantCultureIgnoreCase))
-                    commandlineOptions["help"] = "";
-
-            //If the commandline issues --help, just stop here
-            if (commandlineOptions.ContainsKey("help"))
+            if (_args.Select(s => s.ToLower()).Intersect(AlternativeHelpStrings.ConvertAll(x => x.ToLower())).Any())
             {
-                if (writeConsole)
-                {
-                    Console.WriteLine(Strings.Program.HelpDisplayDialog);
-
-                    foreach(Library.Interface.ICommandLineArgument arg in SupportedCommands)
-                        Console.WriteLine(Strings.Program.HelpDisplayFormat(arg.Name, arg.LongDescription));
-
-                    return;
-                }
-                else
-                {
-                    throw new Exception("Server invoked with --help");
-                }
-
+                return ShowHelp(writeToConsole);
             }
 
-#if DEBUG
-            //Log various information in the logfile
-            if (!commandlineOptions.ContainsKey("log-file"))
+            if (commandlineOptions.ContainsKey("tempdir") && !string.IsNullOrEmpty(commandlineOptions["tempdir"]))
             {
-                commandlineOptions["log-file"] = System.IO.Path.Combine(StartupPath, "Duplicati.debug.log");
-                commandlineOptions["log-level"] = Duplicati.Library.Logging.LogMessageType.Profiling.ToString();
+                Library.Utility.SystemContextSettings.DefaultTempPath = commandlineOptions["tempdir"];
             }
-#endif
-            // Allow override of the environment variables from the commandline
-            if (commandlineOptions.ContainsKey("server-datafolder"))
-                Environment.SetEnvironmentVariable(DATAFOLDER_ENV_NAME, commandlineOptions["server-datafolder"]);
-            if (commandlineOptions.ContainsKey("server-encryption-key"))
-                Environment.SetEnvironmentVariable(DB_KEY_ENV_NAME, commandlineOptions["server-encryption-key"]);
 
-            //Set the %DUPLICATI_HOME% env variable, if it is not already set
-            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(DATAFOLDER_ENV_NAME)))
+            Library.Utility.SystemContextSettings.StartSession();
+
+            var parameterFileOption = commandlineOptions.Keys.Select(s => s.ToLower())
+                .Intersect(ParameterFileOptionStrings.ConvertAll(x => x.ToLower())).FirstOrDefault();
+
+            if (parameterFileOption != null && !string.IsNullOrEmpty(commandlineOptions[parameterFileOption]))
             {
-#if DEBUG
-                //debug mode uses a lock file located in the app folder
-                Environment.SetEnvironmentVariable(DATAFOLDER_ENV_NAME, StartupPath);
-#else
-                bool portableMode = commandlineOptions.ContainsKey("portable-mode") ? Library.Utility.Utility.ParseBool(commandlineOptions["portable-mode"], true) : false;
-
-                if (portableMode)
-                {
-                    //Portable mode uses a data folder in the application home dir
-                    Environment.SetEnvironmentVariable(DATAFOLDER_ENV_NAME, System.IO.Path.Combine(StartupPath, "data"));
-                    System.IO.Directory.SetCurrentDirectory(StartupPath);
-                }
-                else
-                {
-                    //Normal release mode uses the systems "Application Data" folder
-                    Environment.SetEnvironmentVariable(DATAFOLDER_ENV_NAME, System.IO.Path.Combine(System.Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), Library.AutoUpdater.AutoUpdateSettings.AppName));
-                }
-#endif
+                string filename = commandlineOptions[parameterFileOption];
+                commandlineOptions.Remove(parameterFileOption);
+                if (!ReadOptionsFromFile(filename, ref filter, args, commandlineOptions))
+                    return 100;
             }
+
+            ConfigureLogging(commandlineOptions);
 
             try
             {
-                try
-                {
-                    //This will also create Program.DATAFOLDER if it does not exist
-                    Instance = new SingleInstance(Duplicati.Library.AutoUpdater.AutoUpdateSettings.AppName, Program.DATAFOLDER);
-                }
-                catch (Exception ex)
-                {
-                    if (writeConsole)
-                    {
-                        Console.WriteLine(Strings.Program.StartupFailure(ex));
-                        return;
-                    }
-                    else
-                    {
-                        throw new Exception(Strings.Program.StartupFailure(ex));
-                    }
-                }
 
-                if (!Instance.IsFirstInstance)
-                {
-                    if (writeConsole)
-                    {
-                        Console.WriteLine(Strings.Program.AnotherInstanceDetected);
-                        return;
-                    }
-                    else
-                    {
-                        throw new SingleInstance.MultipleInstanceException(Strings.Program.AnotherInstanceDetected);
-                    }
-                }
-
-                // Setup the log redirect
-                Duplicati.Library.Logging.Log.CurrentLog = Program.LogHandler;
-
-                if (commandlineOptions.ContainsKey("log-file"))
-                {
-                    if (System.IO.File.Exists(commandlineOptions["log-file"]))
-                        System.IO.File.Delete(commandlineOptions["log-file"]);
-
-                    var loglevel = Duplicati.Library.Logging.LogMessageType.Error;
-
-                    if (commandlineOptions.ContainsKey("log-level"))
-                        Enum.TryParse<Duplicati.Library.Logging.LogMessageType>(commandlineOptions["log-level"], true, out loglevel);
-
-                    Program.LogHandler.SetServerFile(commandlineOptions["log-file"], loglevel); 
-                }
-
-                Version sqliteVersion = new Version((string)Duplicati.Library.SQLiteHelper.SQLiteLoader.SQLiteConnectionType.GetProperty("SQLiteVersion").GetValue(null, null));
-                if (sqliteVersion < new Version(3, 6, 3))
-                {
-                    if (writeConsole)
-                    {
-                        //The official Mono SQLite provider is also broken with less than 3.6.3
-                        Console.WriteLine(Strings.Program.WrongSQLiteVersion(sqliteVersion, "3.6.3"));
-                        return;
-                    }
-                    else
-                    {
-                        throw new Exception(Strings.Program.WrongSQLiteVersion(sqliteVersion, "3.6.3"));
-                    }
-                }
-
-                //Create the connection instance
-                System.Data.IDbConnection con = (System.Data.IDbConnection)Activator.CreateInstance(Duplicati.Library.SQLiteHelper.SQLiteLoader.SQLiteConnectionType);
-
-                try
-                {
-                    DatabasePath = System.IO.Path.Combine(Program.DATAFOLDER, "Duplicati-server.sqlite");
-                    if (!System.IO.Directory.Exists(System.IO.Path.GetDirectoryName(DatabasePath)))
-                        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(DatabasePath));
-
-#if DEBUG
-                    //Default is to not use encryption for debugging
-                    Program.UseDatabaseEncryption = commandlineOptions.ContainsKey("unencrypted-database") ? !Library.Utility.Utility.ParseBool(commandlineOptions["unencrypted-database"], true) : false;
-#else
-                    Program.UseDatabaseEncryption = commandlineOptions.ContainsKey("unencrypted-database") ? !Library.Utility.Utility.ParseBool(commandlineOptions["unencrypted-database"], true) : true;
-#endif
-                    con.ConnectionString = "Data Source=" + DatabasePath;
-
-                    //Attempt to open the database, handling any encryption present
-                    OpenDatabase(con);
-
-                    Duplicati.Library.SQLiteHelper.DatabaseUpgrader.UpgradeDatabase(con, DatabasePath, typeof(Duplicati.Server.Database.Connection));
-                }
-                catch (Exception ex)
-                {
-                    //Unwrap the reflection exceptions
-                    if (ex is System.Reflection.TargetInvocationException && ex.InnerException != null)
-                        ex = ex.InnerException;
-
-                    if (writeConsole)
-                    {
-                        Console.WriteLine(Strings.Program.DatabaseOpenError(ex.Message));
-                        return;
-                    }
-                    else
-                    {
-                        throw new Exception(Strings.Program.DatabaseOpenError(ex.Message), ex);
-                    }
-                }
-
-                DataConnection = new Duplicati.Server.Database.Connection(con);
+                DataConnection = GetDatabaseConnection(commandlineOptions);
 
                 if (!DataConnection.ApplicationSettings.FixedInvalidBackupId)
                     DataConnection.FixInvalidBackupId();
 
+                CreateApplicationInstance(writeToConsole);
+
                 StartOrStopUsageReporter();
 
-                if (commandlineOptions.ContainsKey("webservice-password"))
-                    Program.DataConnection.ApplicationSettings.SetWebserverPassword(commandlineOptions["webservice-password"]);
+                AdjustApplicationSettings(commandlineOptions);
 
                 ApplicationExitEvent = new System.Threading.ManualResetEvent(false);
-                    
-                Duplicati.Library.AutoUpdater.UpdaterManager.OnError += (Exception obj) =>
+
+                Library.AutoUpdater.UpdaterManager.OnError += (Exception obj) =>
                 {
-                    Program.DataConnection.LogError(null, "Error in updater", obj);
+                    DataConnection.LogError(null, "Error in updater", obj);
                 };
-
-
+                
                 UpdatePoller = new UpdatePollThread();
-                DateTime lastPurge = new DateTime(0);
 
-                System.Threading.TimerCallback purgeTempFilesCallback = (x) => {
-                    try
-                    {
-                        if (Math.Abs((DateTime.Now - lastPurge).TotalHours) < 23)
-                            return;
-                        
-                        lastPurge = DateTime.Now;
+                SetPurgeTempFilesTimer(commandlineOptions);
 
-                        foreach(var e in Program.DataConnection.GetTempFiles().Where((f) => f.Expires < DateTime.Now))
-                        {
-                            try 
-                            { 
-                                if (System.IO.File.Exists(e.Path))
-                                    System.IO.File.Delete(e.Path);
-                            }
-                            catch (Exception ex)
-                            {
-                                Program.DataConnection.LogError(null, string.Format("Failed to delete temp file: {0}", e.Path), ex); 
-                            }
+                SetLiveControls();
 
-                            Program.DataConnection.DeleteTempFile(e.ID);                                
-                        }
+                SetWorkerThread();
 
-
-                        Duplicati.Library.Utility.TempFile.RemoveOldApplicationTempFiles((path, ex) => {
-                            Program.DataConnection.LogError(null, string.Format("Failed to delete temp file: {0}", path), ex); 
-                        });
-
-                        string pts;
-                        if (!commandlineOptions.TryGetValue("log-retention", out pts))
-                            pts = DEFAULT_LOG_RETENTION;
-
-                        Program.DataConnection.PurgeLogData(Library.Utility.Timeparser.ParseTimeInterval(pts, DateTime.Now, true));
-                    }
-                    catch (Exception ex)
-                    {
-                        Program.DataConnection.LogError(null, "Failed during temp file cleanup", ex); 
-                    }
-                };
-
-                try 
-                {
-                    PurgeTempFilesTimer = new System.Threading.Timer(purgeTempFilesCallback, null, TimeSpan.FromHours(1), TimeSpan.FromDays(1));
-                } 
-                catch (ArgumentOutOfRangeException)
-                {
-                    //Bugfix for older Mono, slightly more resources used to avoid large values in the period field
-                    PurgeTempFilesTimer = new System.Threading.Timer(purgeTempFilesCallback, null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
-                }
-                    
-                LiveControl = new LiveControls(DataConnection.ApplicationSettings);
-                LiveControl.StateChanged += new EventHandler(LiveControl_StateChanged);
-                LiveControl.ThreadPriorityChanged += new EventHandler(LiveControl_ThreadPriorityChanged);
-                LiveControl.ThrottleSpeedChanged += new EventHandler(LiveControl_ThrottleSpeedChanged);
-
-                Program.WorkThread = new Duplicati.Library.Utility.WorkerThread<Runner.IRunnerData>((x) =>
-                {
-                    Runner.Run(x, true);
-                }, LiveControl.State == LiveControls.LiveControlState.Paused);
-                Program.Scheduler = new Scheduler(WorkThread);
-
-                Program.WorkThread.StartingWork += (worker, task) => { SignalNewEvent(null, null); };
-                Program.WorkThread.CompletedWork += (worker, task) => { SignalNewEvent(null, null); };
-                Program.WorkThread.WorkQueueChanged += (worker) => { SignalNewEvent(null, null); };
-                Program.Scheduler.NewSchedule += new EventHandler(SignalNewEvent);
-                Program.WorkThread.OnError += (worker, task, exception) => { Program.DataConnection.LogError(task == null ? null : task.BackupID, "Error in worker", exception); };
-
-                var lastscheduleid = LastDataUpdateID;
-                Program.StatusEventNotifyer.NewEvent += (sender, e) => 
-                { 
-                    if (lastscheduleid != LastDataUpdateID) 
-                    {
-                        lastscheduleid = LastDataUpdateID;
-                        Program.Scheduler.Reschedule(); 
-                    }
-                };
-
-                Action<long, Exception> registerTaskResult = (id, ex) => {
-                    lock(Program.MainLock) {
-                        
-                        // If the new results says it crashed, we store that instead of success
-                        if (Program.TaskResultCache.Count > 0 && Program.TaskResultCache.Last().Key == id)
-                        {
-                            if (ex != null && Program.TaskResultCache.Last().Value == null)
-                                Program.TaskResultCache.RemoveAt(Program.TaskResultCache.Count - 1);
-                            else
-                                return;
-                        }
-                        
-                        Program.TaskResultCache.Add(new KeyValuePair<long, Exception>(id, ex));
-                        while(Program.TaskResultCache.Count > MAX_TASK_RESULT_CACHE_SIZE)
-                            Program.TaskResultCache.RemoveAt(0);
-                    }
-                };
-
-                Program.WorkThread.CompletedWork += (worker, task) => { registerTaskResult(task.TaskID, null); };
-                Program.WorkThread.OnError += (worker, task, exception) => { registerTaskResult(task.TaskID, exception); };
-
-
-                Program.WebServer = new WebServer.Server(commandlineOptions);
-
-                if (Program.WebServer.Port != DataConnection.ApplicationSettings.LastWebserverPort)
-                    ServerPortChanged = true;
-                DataConnection.ApplicationSettings.LastWebserverPort = Program.WebServer.Port;
+                StartWebServer(commandlineOptions);
 
                 if (Library.Utility.Utility.ParseBoolOption(commandlineOptions, "ping-pong-keepalive"))
                 {
-                    Program.PingPongThread = new System.Threading.Thread(PingPongMethod);
-                    Program.PingPongThread.IsBackground = true;
-                    Program.PingPongThread.Start();
+                    PingPongThread = new System.Threading.Thread(PingPongMethod) {IsBackground = true};
+                    PingPongThread.Start();
                 }
 
                 ServerStartedEvent.Set();
@@ -509,16 +267,21 @@ namespace Duplicati.Server
             catch (SingleInstance.MultipleInstanceException mex)
             {
                 System.Diagnostics.Trace.WriteLine(Strings.Program.SeriousError(mex.ToString()));
-                if (writeConsole)
-                    Console.WriteLine(Strings.Program.SeriousError(mex.ToString()));
-                else
-                    throw mex;
+                if (!writeToConsole) throw;
+                
+                Console.WriteLine(Strings.Program.SeriousError(mex.ToString()));
+                return 100;
+
+                throw;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.WriteLine(Strings.Program.SeriousError(ex.ToString()));
-                if (writeConsole)
+                if (writeToConsole)
+                {
                     Console.WriteLine(Strings.Program.SeriousError(ex.ToString()));
+                    return 100;
+                }
                 else
                     throw new Exception(Strings.Program.SeriousError(ex.ToString()), ex);
             }
@@ -526,47 +289,404 @@ namespace Duplicati.Server
             {
                 StatusEventNotifyer.SignalNewEvent();
 
-                if (UpdatePoller != null)
-                    UpdatePoller.Terminate();
-                if (Scheduler != null)
-                    Scheduler.Terminate(true);
-                if (WorkThread != null)
-                    WorkThread.Terminate(true);
-                if (Instance != null)
-                    Instance.Dispose();
-                if (PurgeTempFilesTimer != null)
-                    PurgeTempFilesTimer.Dispose();
+                UpdatePoller?.Terminate();
+                Scheduler?.Terminate(true);
+                WorkThread?.Terminate(true);
+                ApplicationInstance?.Dispose();
+                PurgeTempFilesTimer?.Dispose();
 
                 Library.UsageReporter.Reporter.ShutDown();
 
-                if (PingPongThread != null)
-                    try { PingPongThread.Abort(); }
-                    catch { }
+                try { PingPongThread?.Abort(); }
+                catch { }
 
-                if (LogHandler != null)
-                    LogHandler.Dispose();
-
+                LogHandler?.Dispose();
             }
+
+            if (UpdatePoller != null && UpdatePoller.IsUpdateRequested)
+                return Library.AutoUpdater.UpdaterManager.MAGIC_EXIT_CODE;
+
+            return 0;
+        }
+
+        private static void StartWebServer(Dictionary<string, string> commandlineOptions)
+        {
+            WebServer = new WebServer.Server(commandlineOptions);
+
+            ServerPortChanged |= WebServer.Port != DataConnection.ApplicationSettings.LastWebserverPort;
+            DataConnection.ApplicationSettings.LastWebserverPort = WebServer.Port;
+        }
+
+        private static void SetWorkerThread()
+        {
+            WorkThread = new Duplicati.Library.Utility.WorkerThread<Runner.IRunnerData>((x) => { Runner.Run(x, true); },
+                LiveControl.State == LiveControls.LiveControlState.Paused);
+            Scheduler = new Scheduler(WorkThread);
+
+            WorkThread.StartingWork += (worker, task) => { SignalNewEvent(null, null); };
+            WorkThread.CompletedWork += (worker, task) => { SignalNewEvent(null, null); };
+            WorkThread.WorkQueueChanged += (worker) => { SignalNewEvent(null, null); };
+            Scheduler.NewSchedule += new EventHandler(SignalNewEvent);
+            WorkThread.OnError += (worker, task, exception) =>
+            {
+                Program.DataConnection.LogError(task?.BackupID, "Error in worker", exception);
+            };
+
+            var lastScheduleId = LastDataUpdateID;
+            Program.StatusEventNotifyer.NewEvent += (sender, e) =>
+            {
+                if (lastScheduleId == LastDataUpdateID) return;
+                lastScheduleId = LastDataUpdateID;
+                Program.Scheduler.Reschedule();
+            };
+
+            void RegisterTaskResult(long id, Exception ex)
+            {
+                lock (MainLock)
+                {
+                    // If the new results says it crashed, we store that instead of success
+                    if (Program.TaskResultCache.Count > 0 && Program.TaskResultCache.Last().Key == id)
+                    {
+                        if (ex != null && Program.TaskResultCache.Last().Value == null)
+                            Program.TaskResultCache.RemoveAt(Program.TaskResultCache.Count - 1);
+                        else
+                            return;
+                    }
+
+                    Program.TaskResultCache.Add(new KeyValuePair<long, Exception>(id, ex));
+                    while (Program.TaskResultCache.Count > MAX_TASK_RESULT_CACHE_SIZE)
+                        Program.TaskResultCache.RemoveAt(0);
+                }
+            }
+
+            Program.WorkThread.CompletedWork += (worker, task) => { RegisterTaskResult(task.TaskID, null); };
+            Program.WorkThread.OnError += (worker, task, exception) => { RegisterTaskResult(task.TaskID, exception); };
+        }
+
+        private static void SetLiveControls()
+        {
+            LiveControl = new LiveControls(DataConnection.ApplicationSettings);
+            LiveControl.StateChanged += LiveControl_StateChanged;
+            LiveControl.ThreadPriorityChanged += LiveControl_ThreadPriorityChanged;
+            LiveControl.ThrottleSpeedChanged += LiveControl_ThrottleSpeedChanged;
+        }
+
+        private static void SetPurgeTempFilesTimer(Dictionary<string, string> commandlineOptions)
+        {
+            var lastPurge = new DateTime(0);
+
+            System.Threading.TimerCallback purgeTempFilesCallback = (x) =>
+            {
+                try
+                {
+#if DEBUG
+                    if (Math.Abs((DateTime.Now - lastPurge).TotalHours) < 1)
+                    {
+                        return;
+                    }
+#else
+                    if (Math.Abs((DateTime.Now - lastPurge).TotalHours) < 23)
+                    {
+                        return;
+                    }
+#endif
+
+                    lastPurge = DateTime.Now;
+
+                    foreach (var e in DataConnection.GetTempFiles().Where((f) => f.Expires < DateTime.Now))
+                    {
+                        try
+                        {
+                            if (System.IO.File.Exists(e.Path))
+                                System.IO.File.Delete(e.Path);
+                        }
+                        catch (Exception ex)
+                        {
+                            DataConnection.LogError(null, $"Failed to delete temp file: {e.Path}", ex);
+                        }
+
+                        DataConnection.DeleteTempFile(e.ID);
+                    }
+
+
+                    Library.Utility.TempFile.RemoveOldApplicationTempFiles((path, ex) =>
+                    {
+                        DataConnection.LogError(null, $"Failed to delete temp file: {path}", ex);
+                    });
+
+                    if (!commandlineOptions.TryGetValue("log-retention", out string pts))
+                    {
+                        pts = DEFAULT_LOG_RETENTION;
+                    }
+
+                    DataConnection.PurgeLogData(Library.Utility.Timeparser.ParseTimeInterval(pts, DateTime.Now, true));
+                }
+                catch (Exception ex)
+                {
+                    DataConnection.LogError(null, "Failed during temp file cleanup", ex);
+                }
+            };
+
+            try
+            {
+#if DEBUG
+                PurgeTempFilesTimer =
+                    new System.Threading.Timer(purgeTempFilesCallback, null, TimeSpan.FromSeconds(10), TimeSpan.FromHours(1));
+#else
+                PurgeTempFilesTimer =
+                    new System.Threading.Timer(purgeTempFilesCallback, null, TimeSpan.FromHours(1), TimeSpan.FromDays(1));
+#endif
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                //Bugfix for older Mono, slightly more resources used to avoid large values in the period field
+                PurgeTempFilesTimer =
+                    new System.Threading.Timer(purgeTempFilesCallback, null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
+            }
+        }
+
+        private static void AdjustApplicationSettings(Dictionary<string, string> commandlineOptions)
+        {
+            if (commandlineOptions.ContainsKey("webservice-password"))
+            {
+                DataConnection.ApplicationSettings.SetWebserverPassword(commandlineOptions["webservice-password"]);
+            }
+
+            DataConnection.ApplicationSettings.GenerateWebserverPasswordTrayIcon();
+
+            if (commandlineOptions.ContainsKey("webservice-allowed-hostnames"))
+            {
+                DataConnection.ApplicationSettings.SetAllowedHostnames(commandlineOptions["webservice-allowed-hostnames"]);
+            }
+        }
+
+        private static void CreateApplicationInstance(bool writeConsole)
+        {
+            try
+            {
+                //This will also create DATAFOLDER if it does not exist
+                ApplicationInstance = new SingleInstance(DataFolder);
+            }
+            catch (Exception ex)
+            {
+                if (writeConsole)
+                {
+                    Console.WriteLine(Strings.Program.StartupFailure(ex));
+                    Environment.Exit(200);
+                }
+
+                throw new Exception(Strings.Program.StartupFailure(ex));
+            }
+
+            if (!ApplicationInstance.IsFirstInstance)
+            {
+                if (writeConsole)
+                {
+                    Console.WriteLine(Strings.Program.AnotherInstanceDetected);
+                    Environment.Exit(200);
+                }
+
+                throw new SingleInstance.MultipleInstanceException(Strings.Program.AnotherInstanceDetected);
+            }
+        }
+
+        private static void ConfigureLogging(Dictionary<string, string> commandlineOptions)
+        {
+
+#if DEBUG
+            //Log various information in the logfile
+            if (!commandlineOptions.ContainsKey("log-file"))
+            {
+                commandlineOptions["log-file"] = System.IO.Path.Combine(StartupPath, "Duplicati.debug.log");
+                commandlineOptions["log-level"] = Duplicati.Library.Logging.LogMessageType.Profiling.ToString();
+                if (System.IO.File.Exists(commandlineOptions["log-file"]))
+                {
+                    System.IO.File.Delete(commandlineOptions["log-file"]);
+                }
+            }
+#endif
+
+            // Setup the log redirect
+            Library.Logging.Log.StartScope(LogHandler, null);
+
+            if (commandlineOptions.ContainsKey("log-file"))
+            {
+                var loglevel = Library.Logging.LogMessageType.Error;
+
+                if (commandlineOptions.ContainsKey("log-level"))
+                    Enum.TryParse(commandlineOptions["log-level"], true, out loglevel);
+
+                LogHandler.SetServerFile(commandlineOptions["log-file"], loglevel);
+            }
+        }
+
+        private static int ShowHelp(bool writeConsole)
+        {
+            if (writeConsole)
+            {
+                Console.WriteLine(Strings.Program.HelpDisplayDialog);
+
+                foreach (Library.Interface.ICommandLineArgument arg in SupportedCommands)
+                    Console.WriteLine(Strings.Program.HelpDisplayFormat(arg.Name, arg.LongDescription));
+
+                return 0;
+            }
+
+            throw new Exception("Server invoked with --help");
+        }
+
+        public static Database.Connection GetDatabaseConnection(Dictionary<string, string> commandlineOptions)
+        {
+            var dbPassword = Environment.GetEnvironmentVariable(DB_KEY_ENV_NAME);
+
+            //If we are on windows we encrypt the database by default
+            //We do not encrypt on Linux as most distros use a SQLite library without encryption support,
+            //Linux users can use an encrypted home folder, or install a SQLite library with encryption support
+
+            //Note that the password here is a default password and public knowledge
+            //
+            //The purpose of this is to prevent casual read of the database, as well
+            // as protect from harddisk string scans, not to protect from determined
+            // attacks.
+            //
+            //If you desire better security, start Duplicati once with the commandline option
+            // --unencrypted-database to decrypt the database.
+            //Then set the environment variable DUPLICATI_DB_KEY to the desired key,
+            // and run Duplicati again without the --unencrypted-database option
+            // to re-encrypt it with the new key
+            //
+            //If you change the key, please note that you need to supply the same
+            // key when restoring the setup, as the setup being backed up will
+            // be encrypted as well.
+            if (!Platform.IsClientPosix && string.IsNullOrEmpty(dbPassword))
+                dbPassword = Library.AutoUpdater.AutoUpdateSettings.AppName + "_Key_42";
+
+            // Allow override of the environment variables from the commandline
+            if (commandlineOptions.ContainsKey("server-encryption-key"))
+                dbPassword = commandlineOptions["server-encryption-key"];
+
+            var serverDataFolder = Environment.GetEnvironmentVariable(DATAFOLDER_ENV_NAME);
+            if (commandlineOptions.ContainsKey("server-datafolder"))
+                serverDataFolder = commandlineOptions["server-datafolder"];
+
+            if (string.IsNullOrEmpty(serverDataFolder))
+            {
+#if DEBUG
+                //debug mode uses a lock file located in the app folder
+                DataFolder = StartupPath;
+#else
+                bool portableMode = commandlineOptions.ContainsKey("portable-mode") ? Library.Utility.Utility.ParseBool(commandlineOptions["portable-mode"], true) : false;
+
+                if (portableMode)
+                {
+                    //Portable mode uses a data folder in the application home dir
+                    DataFolder = System.IO.Path.Combine(StartupPath, "data");
+                    System.IO.Directory.SetCurrentDirectory(StartupPath);
+                }
+                else
+                {
+                    //Normal release mode uses the systems "(Local) Application Data" folder
+                    // %LOCALAPPDATA% on Windows, ~/.config on Linux
+
+                    // Special handling for Windows:
+                    //   - Older versions use %APPDATA%
+                    //   - but new versions use %LOCALAPPDATA%
+                    //
+                    //  If we find a new version, lets use that
+                    //    otherwise use the older location
+                    //
+
+                    serverDataFolder = System.IO.Path.Combine(System.Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), Library.AutoUpdater.AutoUpdateSettings.AppName);
+                    if (Platform.IsClientWindows)
+                    {
+                        var localappdata = System.IO.Path.Combine(System.Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Library.AutoUpdater.AutoUpdateSettings.AppName);
+
+                        var prefile = System.IO.Path.Combine(serverDataFolder, "Duplicati-server.sqlite");
+                        var curfile = System.IO.Path.Combine(localappdata, "Duplicati-server.sqlite");
+
+                        // If the new file exists, we use that
+                        // If the new file does not exist, and the old file exists we use the old
+                        // Otherwise we use the new location
+                        if (System.IO.File.Exists(curfile) || !System.IO.File.Exists(prefile))
+                            serverDataFolder = localappdata;
+                    }
+
+                    DataFolder = serverDataFolder;
+                }
+#endif
+            }
+            else
+                DataFolder = Util.AppendDirSeparator(Environment.ExpandEnvironmentVariables(serverDataFolder).Trim('"'));
+
+            var sqliteVersion = new Version((string)Duplicati.Library.SQLiteHelper.SQLiteLoader.SQLiteConnectionType.GetProperty("SQLiteVersion").GetValue(null, null));
+
+            if (sqliteVersion < new Version(3, 6, 3))
+            {
+                //The official Mono SQLite provider is also broken with less than 3.6.3
+                throw new Exception(Strings.Program.WrongSQLiteVersion(sqliteVersion, "3.6.3"));
+            }
+
+            //Create the connection instance
+            var con = Library.SQLiteHelper.SQLiteLoader.LoadConnection();
+
+            try
+            {
+                DatabasePath = System.IO.Path.Combine(DataFolder, "Duplicati-server.sqlite");
+
+                if (!System.IO.Directory.Exists(System.IO.Path.GetDirectoryName(DatabasePath)))
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(DatabasePath));
+#if DEBUG
+                //Default is to not use encryption for debugging
+                var useDatabaseEncryption = commandlineOptions.ContainsKey("unencrypted-database") && !Library.Utility.Utility.ParseBool(commandlineOptions["unencrypted-database"], true);
+#else
+                var useDatabaseEncryption = !commandlineOptions.ContainsKey("unencrypted-database") || !Library.Utility.Utility.ParseBool(commandlineOptions["unencrypted-database"], true);
+#endif
+
+                //Attempt to open the database, handling any encryption present
+                Duplicati.Library.SQLiteHelper.SQLiteLoader.OpenDatabase(con, DatabasePath, useDatabaseEncryption, dbPassword);
+
+                Duplicati.Library.SQLiteHelper.DatabaseUpgrader.UpgradeDatabase(con, DatabasePath, typeof(Database.Connection));
+            }
+            catch (Exception ex)
+            {
+                //Unwrap the reflection exceptions
+                if (ex is System.Reflection.TargetInvocationException && ex.InnerException != null)
+                    ex = ex.InnerException;
+
+                throw new Exception(Strings.Program.DatabaseOpenError(ex.Message));
+            }
+
+            return new Database.Connection(con);
         }
 
         public static void StartOrStopUsageReporter()
         {
-            var disableUsageReporter = 
-                string.Equals(DataConnection.ApplicationSettings.UsageReporterLevel, "none", StringComparison.InvariantCultureIgnoreCase)
+            var disableUsageReporter =
+                string.Equals(DataConnection.ApplicationSettings.UsageReporterLevel, "none", StringComparison.OrdinalIgnoreCase)
                 ||
-                string.Equals(DataConnection.ApplicationSettings.UsageReporterLevel, "disabled", StringComparison.InvariantCultureIgnoreCase);
+                string.Equals(DataConnection.ApplicationSettings.UsageReporterLevel, "disabled", StringComparison.OrdinalIgnoreCase);
 
             Library.UsageReporter.ReportType reportLevel;
-            if (!Enum.TryParse<Library.UsageReporter.ReportType>(DataConnection.ApplicationSettings.UsageReporterLevel, true, out reportLevel))                    
+            if (!Enum.TryParse<Library.UsageReporter.ReportType>(DataConnection.ApplicationSettings.UsageReporterLevel, true, out reportLevel))
                 Library.UsageReporter.Reporter.SetReportLevel(null, disableUsageReporter);
             else
                 Library.UsageReporter.Reporter.SetReportLevel(reportLevel, disableUsageReporter);
         }
 
+        public static void UpdateThrottleSpeeds()
+        {
+            if (Program.WorkThread == null)
+                return;
+
+            var cur = Program.WorkThread.CurrentTask;
+            if (cur != null)
+                cur.UpdateThrottleSpeed();
+        }
+
         private static void SignalNewEvent(object sender, EventArgs e)
         {
             StatusEventNotifyer.SignalNewEvent();
-        }   
+        }
 
 
         /// <summary>
@@ -575,7 +695,7 @@ namespace Duplicati.Server
         /// <param name="sender"></param>
         /// <param name="e"></param>
         private static void LiveControl_ThreadPriorityChanged(object sender, EventArgs e)
-        {        
+        {
             StatusEventNotifyer.SignalNewEvent();
         }
 
@@ -600,96 +720,21 @@ namespace Duplicati.Server
                     {
                         WorkThread.Pause();
                         var t = WorkThread.CurrentTask;
-                        if (t != null)
-                            t.Pause();
+                        t?.Pause();
                         break;
                     }
                 case LiveControls.LiveControlState.Running:
                     {
                         WorkThread.Resume();
                         var t = WorkThread.CurrentTask;
-                        if (t != null)
-                            t.Resume();
+                        t?.Resume();
                         break;
                     }
             }
 
             StatusEventNotifyer.SignalNewEvent();
         }
-
-        /// <summary>
-        /// Helper method with logic to handle opening a database in possibly encrypted format
-        /// </summary>
-        /// <param name="con">The SQLite connection object</param>
-        internal static void OpenDatabase(System.Data.IDbConnection con)
-        {
-            bool noEncryption = !Program.UseDatabaseEncryption;
-            string password = Environment.GetEnvironmentVariable(DB_KEY_ENV_NAME);
-
-            System.Reflection.MethodInfo setPwdMethod = con.GetType().GetMethod("SetPassword", new Type[] { typeof(string) });
-            string attemptedPassword;
-
-            if (noEncryption || string.IsNullOrEmpty(password))
-                attemptedPassword = null; //No encryption specified, attempt to open without
-            else
-                attemptedPassword = password; //Encryption specified, attempt to open with
-
-            if (setPwdMethod != null)
-                setPwdMethod.Invoke(con, new object[] { attemptedPassword });
-
-            try
-            {
-                //Attempt to open in preferred state
-                con.Open();
-
-                // Do a dummy query to make sure we have a working db
-                using (var cmd = con.CreateCommand())
-                {
-                    cmd.CommandText = "SELECT COUNT(*) FROM SQLITE_MASTER";
-                    cmd.ExecuteScalar();
-                }
-            }
-            catch
-            {
-                try
-                {
-                    //We can't try anything else without a password
-                    if (string.IsNullOrEmpty(password))
-                        throw;
-
-                    //Open failed, now try the reverse
-                    if (attemptedPassword == null)
-                        attemptedPassword = password;
-                    else
-                        attemptedPassword = null;
-
-                    con.Close();
-                    setPwdMethod.Invoke(con, new object[] { attemptedPassword });
-                    con.Open();
-
-                    // Do a dummy query to make sure we have a working db
-                    using (var cmd = con.CreateCommand())
-                    {
-                        cmd.CommandText = "SELECT COUNT(*) FROM SQLITE_MASTER";
-                        cmd.ExecuteScalar();
-                    }
-                }
-                catch
-                {
-                    try { con.Close(); }
-                    catch { }
-                }
-
-                //If the db is not open now, it won't open
-                if (con.State != System.Data.ConnectionState.Open)
-                    throw; //Report original error
-
-                //The open method succeeded with the non-default method, now change the password
-                System.Reflection.MethodInfo changePwdMethod = con.GetType().GetMethod("ChangePassword", new Type[] { typeof(string) });
-                changePwdMethod.Invoke(con, new object[] { noEncryption ? null : password });
-            }
-        }
-
+               
         /// <summary>
         /// Simple method for tracking if the server has crashed
         /// </summary>
@@ -727,26 +772,115 @@ namespace Duplicati.Server
             get
             {
                 var lst = new List<Duplicati.Library.Interface.ICommandLineArgument> (new Duplicati.Library.Interface.ICommandLineArgument[] {
+                    new Duplicati.Library.Interface.CommandLineArgument("tempdir", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Path, Strings.Program.TempdirShort, Strings.Program.TempdirLong, System.IO.Path.GetTempPath()),
                     new Duplicati.Library.Interface.CommandLineArgument("help", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Boolean, Strings.Program.HelpCommandDescription, Strings.Program.HelpCommandDescription),
+                    new Duplicati.Library.Interface.CommandLineArgument("parameters-file", Library.Interface.CommandLineArgument.ArgumentType.Path, Strings.Program.ParametersFileOptionShort, Strings.Program.ParametersFileOptionLong2, "", new string[] {"parameter-file", "parameterfile"}),
                     new Duplicati.Library.Interface.CommandLineArgument("unencrypted-database", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Boolean, Strings.Program.UnencrypteddatabaseCommandDescription, Strings.Program.UnencrypteddatabaseCommandDescription),
                     new Duplicati.Library.Interface.CommandLineArgument("portable-mode", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Boolean, Strings.Program.PortablemodeCommandDescription, Strings.Program.PortablemodeCommandDescription),
                     new Duplicati.Library.Interface.CommandLineArgument("log-file", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Path, Strings.Program.LogfileCommandDescription, Strings.Program.LogfileCommandDescription),
                     new Duplicati.Library.Interface.CommandLineArgument("log-level", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Enumeration, Strings.Program.LoglevelCommandDescription, Strings.Program.LoglevelCommandDescription, "Warning", null, Enum.GetNames(typeof(Duplicati.Library.Logging.LogMessageType))),
                     new Duplicati.Library.Interface.CommandLineArgument(Duplicati.Server.WebServer.Server.OPTION_WEBROOT, Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Path, Strings.Program.WebserverWebrootDescription, Strings.Program.WebserverWebrootDescription, Duplicati.Server.WebServer.Server.DEFAULT_OPTION_WEBROOT),
                     new Duplicati.Library.Interface.CommandLineArgument(Duplicati.Server.WebServer.Server.OPTION_PORT, Duplicati.Library.Interface.CommandLineArgument.ArgumentType.String, Strings.Program.WebserverPortDescription, Strings.Program.WebserverPortDescription, Duplicati.Server.WebServer.Server.DEFAULT_OPTION_PORT.ToString()),
-                    new Duplicati.Library.Interface.CommandLineArgument(Duplicati.Server.WebServer.Server.OPTION_SSLCERTIFICATEFILE, Duplicati.Library.Interface.CommandLineArgument.ArgumentType.String, Strings.Program.WebserverPortDescription, Strings.Program.WebserverPortDescription, Duplicati.Server.WebServer.Server.OPTION_SSLCERTIFICATEFILE.ToString()),
-                    new Duplicati.Library.Interface.CommandLineArgument(Duplicati.Server.WebServer.Server.OPTION_SSLCERTIFICATEFILEPASSWORD, Duplicati.Library.Interface.CommandLineArgument.ArgumentType.String, Strings.Program.WebserverPortDescription, Strings.Program.WebserverPortDescription, Duplicati.Server.WebServer.Server.OPTION_SSLCERTIFICATEFILEPASSWORD.ToString()),
+                    new Duplicati.Library.Interface.CommandLineArgument(Duplicati.Server.WebServer.Server.OPTION_SSLCERTIFICATEFILE, Duplicati.Library.Interface.CommandLineArgument.ArgumentType.String, Strings.Program.WebserverCertificateFileDescription, Strings.Program.WebserverCertificateFileDescription, Duplicati.Server.WebServer.Server.OPTION_SSLCERTIFICATEFILE),
+                    new Duplicati.Library.Interface.CommandLineArgument(Duplicati.Server.WebServer.Server.OPTION_SSLCERTIFICATEFILEPASSWORD, Duplicati.Library.Interface.CommandLineArgument.ArgumentType.String, Strings.Program.WebserverCertificatePasswordDescription, Strings.Program.WebserverCertificatePasswordDescription, Duplicati.Server.WebServer.Server.OPTION_SSLCERTIFICATEFILEPASSWORD),
                     new Duplicati.Library.Interface.CommandLineArgument(Duplicati.Server.WebServer.Server.OPTION_INTERFACE, Duplicati.Library.Interface.CommandLineArgument.ArgumentType.String, Strings.Program.WebserverInterfaceDescription, Strings.Program.WebserverInterfaceDescription, Duplicati.Server.WebServer.Server.DEFAULT_OPTION_INTERFACE),
                     new Duplicati.Library.Interface.CommandLineArgument("webservice-password", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Password, Strings.Program.WebserverPasswordDescription, Strings.Program.WebserverPasswordDescription),
+                    new Duplicati.Library.Interface.CommandLineArgument("webservice-allowed-hostnames", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.String, Strings.Program.WebserverAllowedhostnamesDescription, Strings.Program.WebserverAllowedhostnamesDescription),
                     new Duplicati.Library.Interface.CommandLineArgument("ping-pong-keepalive", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Boolean, Strings.Program.PingpongkeepaliveShort, Strings.Program.PingpongkeepaliveLong),
                     new Duplicati.Library.Interface.CommandLineArgument("log-retention", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Timespan, Strings.Program.LogretentionShort, Strings.Program.LogretentionLong, DEFAULT_LOG_RETENTION),
                     new Duplicati.Library.Interface.CommandLineArgument("server-datafolder", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Path, Strings.Program.ServerdatafolderShort, Strings.Program.ServerdatafolderLong(DATAFOLDER_ENV_NAME), System.IO.Path.Combine(System.Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), Library.AutoUpdater.AutoUpdateSettings.AppName)),
+
                 });
 
-                if (!Duplicati.Library.Utility.Utility.IsClientLinux)
+                if (!Platform.IsClientPosix)
                     lst.Add(new Duplicati.Library.Interface.CommandLineArgument("server-encryption-key", Duplicati.Library.Interface.CommandLineArgument.ArgumentType.Password, Strings.Program.ServerencryptionkeyShort, Strings.Program.ServerencryptionkeyLong(DB_KEY_ENV_NAME, "unencrypted-database"), Library.AutoUpdater.AutoUpdateSettings.AppName + "_Key_42"));
 
                 return lst.ToArray();
+            }
+        }
+
+        private static bool ReadOptionsFromFile(string filename, ref Library.Utility.IFilter filter, List<string> cargs, Dictionary<string, string> options)
+        {
+            try
+            {
+                List<string> fargs = new List<string>(Library.Utility.Utility.ReadFileWithDefaultEncoding(Environment.ExpandEnvironmentVariables(filename)).Replace("\r\n", "\n").Replace("\r", "\n").Split(new String[] { "\n" }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()));
+                var newsource = new List<string>();
+                string newtarget = null;
+                string prependfilter = null;
+                string appendfilter = null;
+                string replacefilter = null;
+
+                var tmpparsed = Library.Utility.FilterCollector.ExtractOptions(fargs, (key, value) => {
+                    if (key.Equals("source", StringComparison.OrdinalIgnoreCase))
+                    {
+                        newsource.Add(value);
+                        return false;
+                    }
+                    else if (key.Equals("target", StringComparison.OrdinalIgnoreCase))
+                    {
+                        newtarget = value;
+                        return false;
+                    }
+                    else if (key.Equals("append-filter", StringComparison.OrdinalIgnoreCase))
+                    {
+                        appendfilter = value;
+                        return false;
+                    }
+                    else if (key.Equals("prepend-filter", StringComparison.OrdinalIgnoreCase))
+                    {
+                        prependfilter = value;
+                        return false;
+                    }
+                    else if (key.Equals("replace-filter", StringComparison.OrdinalIgnoreCase))
+                    {
+                        replacefilter = value;
+                        return false;
+                    }
+
+                    return true;
+                });
+
+                var opt = tmpparsed.Item1;
+                var newfilter = tmpparsed.Item2;
+
+                // If the user specifies parameters-file, all filters must be in the file.
+                // Allowing to specify some filters on the command line could result in wrong filter ordering
+                if (!filter.Empty && !newfilter.Empty)
+                    throw new Duplicati.Library.Interface.UserInformationException(Strings.Program.FiltersCannotBeUsedWithFileError2, "FiltersCannotBeUsedOnCommandLineAndInParameterFile");
+
+                if (!newfilter.Empty)
+                    filter = newfilter;
+
+                if (!string.IsNullOrWhiteSpace(prependfilter))
+                    filter = Library.Utility.FilterExpression.Combine(Library.Utility.FilterExpression.Deserialize(prependfilter.Split(new string[] { System.IO.Path.PathSeparator.ToString() }, StringSplitOptions.RemoveEmptyEntries)), filter);
+
+                if (!string.IsNullOrWhiteSpace(appendfilter))
+                    filter = Library.Utility.FilterExpression.Combine(filter, Library.Utility.FilterExpression.Deserialize(appendfilter.Split(new string[] { System.IO.Path.PathSeparator.ToString() }, StringSplitOptions.RemoveEmptyEntries)));
+
+                if (!string.IsNullOrWhiteSpace(replacefilter))
+                    filter = Library.Utility.FilterExpression.Deserialize(replacefilter.Split(new string[] { System.IO.Path.PathSeparator.ToString() }, StringSplitOptions.RemoveEmptyEntries));
+
+                foreach (KeyValuePair<String, String> keyvalue in opt)
+                    options[keyvalue.Key] = keyvalue.Value;
+
+                if (!string.IsNullOrEmpty(newtarget))
+                {
+                    if (cargs.Count <= 1)
+                        cargs.Add(newtarget);
+                    else
+                        cargs[1] = newtarget;
+                }
+
+                if (cargs.Count >= 1 && cargs[0].Equals("backup", StringComparison.OrdinalIgnoreCase))
+                    cargs.AddRange(newsource);
+                else if (newsource.Count > 0)
+                    Library.Logging.Log.WriteVerboseMessage(LOGTAG, "NotUsingBackupSources", Strings.Program.SkippingSourceArgumentsOnNonBackupOperation);
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                throw new Exception(Strings.Program.FailedToParseParametersFileError(filename, e.Message));
             }
         }
     }

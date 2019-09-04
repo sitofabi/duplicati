@@ -23,6 +23,11 @@ namespace Duplicati.Library.Main.Database
 {
     internal class LocalRepairDatabase : LocalDatabase
     {
+        /// <summary>
+        /// The tag used for logging
+        /// </summary>
+        private static readonly string LOGTAG = Logging.Log.LogTagFromType(typeof(LocalRepairDatabase));
+
         public LocalRepairDatabase(string path)
             : base(path, "Repair", true)
         {
@@ -66,8 +71,8 @@ namespace Duplicati.Library.Main.Database
                     
                 }
             }
-        
-            private System.Data.IDataReader m_rd;
+
+            private readonly System.Data.IDataReader m_rd;
             public bool Done { get; private set; }
             
             public BlockWithSources(System.Data.IDataReader rd)
@@ -130,11 +135,11 @@ namespace Duplicati.Library.Main.Database
         
         private class MissingBlockList : IMissingBlockList
         {
-            private System.Data.IDbConnection m_connection;
-            private TemporaryTransactionWrapper m_transaction;
+            private readonly System.Data.IDbConnection m_connection;
+            private readonly TemporaryTransactionWrapper m_transaction;
             private System.Data.IDbCommand m_insertCommand;
             private string m_tablename;
-            private string m_volumename;
+            private readonly string m_volumename;
             
             public MissingBlockList(string volumename, System.Data.IDbConnection connection, System.Data.IDbTransaction transaction)
             {
@@ -178,7 +183,7 @@ namespace Duplicati.Library.Main.Database
                         {
                             var bs = new BlockWithSources(rd);
                             while (!bs.Done)
-                                yield return (IBlockWithSources)bs;
+                                yield return bs;
                         }
             }
                     
@@ -191,8 +196,8 @@ namespace Duplicati.Library.Main.Database
             
             public IEnumerable<IRemoteVolume> GetFilesetsUsingMissingBlocks()
             {
-                var blocks = @"SELECT DISTINCT ""File"".""ID"" AS ID FROM ""{0}"", ""Block"", ""Blockset"", ""BlocksetEntry"", ""File"" WHERE ""Block"".""Hash"" = ""{0}"".""Hash"" AND ""Block"".""Size"" = ""{0}"".""Size"" AND ""BlocksetEntry"".""BlockID"" = ""Block"".""ID"" AND ""BlocksetEntry"".""BlocksetID"" = ""Blockset"".""ID"" AND ""File"".""BlocksetID"" = ""Blockset"".""ID"" ";
-                var blocklists = @"SELECT DISTINCT ""File"".""ID"" AS ID FROM ""{0}"", ""Block"", ""Blockset"", ""BlocklistHash"", ""File"" WHERE ""Block"".""Hash"" = ""{0}"".""Hash"" AND ""Block"".""Size"" = ""{0}"".""Size"" AND ""BlocklistHash"".""Hash"" = ""Block"".""Hash"" AND ""BlocklistHash"".""BlocksetID"" = ""Blockset"".""ID"" AND ""File"".""BlocksetID"" = ""Blockset"".""ID"" ";
+                var blocks = @"SELECT DISTINCT ""FileLookup"".""ID"" AS ID FROM ""{0}"", ""Block"", ""Blockset"", ""BlocksetEntry"", ""FileLookup"" WHERE ""Block"".""Hash"" = ""{0}"".""Hash"" AND ""Block"".""Size"" = ""{0}"".""Size"" AND ""BlocksetEntry"".""BlockID"" = ""Block"".""ID"" AND ""BlocksetEntry"".""BlocksetID"" = ""Blockset"".""ID"" AND ""FileLookup"".""BlocksetID"" = ""Blockset"".""ID"" ";
+                var blocklists = @"SELECT DISTINCT ""FileLookup"".""ID"" AS ID FROM ""{0}"", ""Block"", ""Blockset"", ""BlocklistHash"", ""FileLookup"" WHERE ""Block"".""Hash"" = ""{0}"".""Hash"" AND ""Block"".""Size"" = ""{0}"".""Size"" AND ""BlocklistHash"".""Hash"" = ""Block"".""Hash"" AND ""BlocklistHash"".""BlocksetID"" = ""Blockset"".""ID"" AND ""FileLookup"".""BlocksetID"" = ""Blockset"".""ID"" ";
             
                 var cmdtxt = @"SELECT DISTINCT ""RemoteVolume"".""Name"", ""RemoteVolume"".""Hash"", ""RemoteVolume"".""Size"" FROM ""RemoteVolume"", ""FilesetEntry"", ""Fileset"" WHERE ""RemoteVolume"".""ID"" = ""Fileset"".""VolumeID"" AND ""Fileset"".""ID"" = ""FilesetEntry"".""FilesetID"" AND ""RemoteVolume"".""Type"" = ? AND ""FilesetEntry"".""FileID"" IN  (SELECT DISTINCT ""ID"" FROM ( " + blocks + " UNION " + blocklists + " ))";
             
@@ -250,7 +255,7 @@ namespace Duplicati.Library.Main.Database
                 var x = cmd.ExecuteScalarInt64(sql_count, 0);
                 if (x > 1)
                 {
-                    m_result.AddMessage("Found duplicate metadatahashes, repairing");
+                    Logging.Log.WriteInformationMessage(LOGTAG, "DuplicateMetadataHashes", "Found duplicate metadatahashes, repairing");
 
                     var tablename = "TmpFile-" + Guid.NewGuid().ToString("N");
 
@@ -280,17 +285,17 @@ namespace Duplicati.Library.Main.Database
                             c2.ExecuteNonQuery(null, rd.GetValue(0), rd.GetValue(1), rd.GetValue(2), rd.GetValue(3), rd.GetValue(1), rd.GetValue(2), rd.GetValue(3), rd.GetValue(0));
                     }
 
-                    cmd.ExecuteNonQuery(string.Format(@"DELETE FROM ""File"" WHERE ""ID"" NOT IN (SELECT ""ID"" FROM ""{0}"") ", tablename));
+                    cmd.ExecuteNonQuery(string.Format(@"DELETE FROM ""FileLookup"" WHERE ""ID"" NOT IN (SELECT ""ID"" FROM ""{0}"") ", tablename));
                     cmd.ExecuteNonQuery(string.Format(@"CREATE INDEX ""{0}-Ix"" ON  ""{0}"" (""ID"", ""MetadataID"")", tablename));
-                    cmd.ExecuteNonQuery(string.Format(@"UPDATE ""File"" SET ""MetadataID"" = (SELECT ""MetadataID"" FROM ""{0}"" A WHERE ""A"".""ID"" = ""File"".""ID"") ", tablename));
+                    cmd.ExecuteNonQuery(string.Format(@"UPDATE ""FileLookup"" SET ""MetadataID"" = (SELECT ""MetadataID"" FROM ""{0}"" A WHERE ""A"".""ID"" = ""FileLookup"".""ID"") ", tablename));
                     cmd.ExecuteNonQuery(string.Format(@"DROP TABLE ""{0}"" ", tablename));
 
                     cmd.CommandText = sql_count;
                     x = cmd.ExecuteScalarInt64(0);
                     if (x > 1)
-                        throw new Duplicati.Library.Interface.UserInformationException("Repair failed, there are still duplicate metadatahashes!");
+                        throw new Duplicati.Library.Interface.UserInformationException("Repair failed, there are still duplicate metadatahashes!", "DuplicateHashesRepairFailed");
 
-                    m_result.AddMessage("Duplicate metadatahashes repaired succesfully");
+                    Logging.Log.WriteInformationMessage(LOGTAG, "DuplicateMetadataHashesFixed", "Duplicate metadatahashes repaired succesfully");
                     tr.Commit();
                 }
             }
@@ -301,31 +306,31 @@ namespace Duplicati.Library.Main.Database
             using(var tr = m_connection.BeginTransaction())
             using(var cmd = m_connection.CreateCommand(tr))
             {
-                var sql_count = @"SELECT COUNT(*) FROM (SELECT ""Path"", ""BlocksetID"", ""MetadataID"", COUNT(*) as ""Duplicates"" FROM ""File"" GROUP BY ""Path"", ""BlocksetID"", ""MetadataID"") WHERE ""Duplicates"" > 1";
+                var sql_count = @"SELECT COUNT(*) FROM (SELECT ""PrefixID"", ""Path"", ""BlocksetID"", ""MetadataID"", COUNT(*) as ""Duplicates"" FROM ""FileLookup"" GROUP BY ""PrefixID"", ""Path"", ""BlocksetID"", ""MetadataID"") WHERE ""Duplicates"" > 1";
 
                 var x = cmd.ExecuteScalarInt64(sql_count, 0);
                 if (x > 0)
                 {
-                    m_result.AddMessage("Found duplicate file entries, repairing");
+                    Logging.Log.WriteInformationMessage(LOGTAG, "DuplicateFileEntries", "Found duplicate file entries, repairing");
 
-                    var sql = @"SELECT ""ID"", ""Path"", ""BlocksetID"", ""MetadataID"", ""Entries"" FROM (
-                            SELECT MIN(""ID"") AS ""ID"", ""Path"", ""BlocksetID"", ""MetadataID"", COUNT(*) as ""Entries"" FROM ""File"" GROUP BY ""Path"", ""BlocksetID"", ""MetadataID"") 
+                    var sql = @"SELECT ""ID"", ""PrefixID"", ""Path"", ""BlocksetID"", ""MetadataID"", ""Entries"" FROM (
+                            SELECT MIN(""ID"") AS ""ID"", ""PrefixID"", ""Path"", ""BlocksetID"", ""MetadataID"", COUNT(*) as ""Entries"" FROM ""FileLookup"" GROUP BY ""PrefixID"", ""Path"", ""BlocksetID"", ""MetadataID"") 
                             WHERE ""Entries"" > 1 ORDER BY ""ID""";
 
                     using(var c2 = m_connection.CreateCommand(tr))
                     {
-                        c2.CommandText = @"UPDATE ""FilesetEntry"" SET ""FileID"" = ? WHERE ""FileID"" IN (SELECT ""ID"" FROM ""File"" WHERE ""Path"" = ? AND ""BlocksetID"" = ? AND ""MetadataID"" = ?)";
-                        c2.CommandText += @"; DELETE FROM ""File"" WHERE ""Path"" = ? AND ""BlocksetID"" = ? AND ""MetadataID"" = ? AND ""ID"" != ?";
+                        c2.CommandText = @"UPDATE ""FilesetEntry"" SET ""FileID"" = ? WHERE ""FileID"" IN (SELECT ""ID"" FROM ""FileLookup"" WHERE ""PrefixID"" = ? AND ""Path"" = ? AND ""BlocksetID"" = ? AND ""MetadataID"" = ?)";
+                        c2.CommandText += @"; DELETE FROM ""FileLookup"" WHERE ""PrefixID"" = ? AND ""Path"" = ? AND ""BlocksetID"" = ? AND ""MetadataID"" = ? AND ""ID"" != ?";
                         foreach(var rd in cmd.ExecuteReaderEnumerable(sql))
-                            c2.ExecuteNonQuery(null, rd.GetValue(0), rd.GetValue(1), rd.GetValue(2), rd.GetValue(3), rd.GetValue(1), rd.GetValue(2), rd.GetValue(3), rd.GetValue(0));
+                            c2.ExecuteNonQuery(null, rd.GetValue(0), rd.GetValue(1), rd.GetValue(2), rd.GetValue(3), rd.GetValue(4), rd.GetValue(1), rd.GetValue(2), rd.GetValue(3), rd.GetValue(4), rd.GetValue(0));
                     }
 
                     cmd.CommandText = sql_count;
                     x = cmd.ExecuteScalarInt64(0);
                     if (x > 1)
-                        throw new Duplicati.Library.Interface.UserInformationException("Repair failed, there are still duplicate file entries!");
+                        throw new Duplicati.Library.Interface.UserInformationException("Repair failed, there are still duplicate file entries!", "DuplicateFilesRepairFailed");
 
-                    m_result.AddMessage("Duplicate file entries repaired succesfully");
+                    Logging.Log.WriteInformationMessage(LOGTAG, "DuplicateFileEntriesFixed", "Duplicate file entries repaired succesfully");
                     tr.Commit();
                 }
             }
@@ -334,7 +339,7 @@ namespace Duplicati.Library.Main.Database
 
         public void FixMissingBlocklistHashes(string blockhashalgorithm, long blocksize)
         {
-            var blockhasher = System.Security.Cryptography.HashAlgorithm.Create(blockhashalgorithm);
+            var blockhasher = Library.Utility.HashAlgorithmHelper.Create(blockhashalgorithm);
             var hashsize = blockhasher.HashSize / 8;
             var blocklistbuffer = new byte[blocksize];
             int blocklistoffset = 0;
@@ -350,7 +355,7 @@ namespace Duplicati.Library.Main.Database
                 var itemswithnoblocklisthash = cmd.ExecuteScalarInt64(countsql, 0);
                 if (itemswithnoblocklisthash != 0)
                 {
-                    m_result.AddMessage(string.Format("Found {0} missing blocklisthash entries, repairing", itemswithnoblocklisthash));
+                    Logging.Log.WriteInformationMessage(LOGTAG, "MissingBlocklistHashes", "Found {0} missing blocklisthash entries, repairing", itemswithnoblocklisthash);
                     using(var c2 = m_connection.CreateCommand(tr))
                     using(var c3 = m_connection.CreateCommand(tr))
                     using(var c4 = m_connection.CreateCommand(tr))
@@ -421,7 +426,6 @@ namespace Duplicati.Library.Main.Database
 
                                 // Add to table
                                 c3.ExecuteNonQuery(null, blocksetid, ix, blkeyfinal);
-                                ix++;
                             }
                         }
                     }
@@ -429,9 +433,9 @@ namespace Duplicati.Library.Main.Database
 
                     itemswithnoblocklisthash = cmd.ExecuteScalarInt64(countsql, 0);
                     if (itemswithnoblocklisthash != 0)
-                        throw new Duplicati.Library.Interface.UserInformationException(string.Format("Failed to repair, after repair {0} blocklisthashes were missing", itemswithnoblocklisthash));
+                        throw new Duplicati.Library.Interface.UserInformationException(string.Format("Failed to repair, after repair {0} blocklisthashes were missing", itemswithnoblocklisthash), "MissingBlocklistHashesRepairFailed");
 
-                    m_result.AddMessage("Missing blocklisthashes repaired succesfully");
+                    Logging.Log.WriteInformationMessage(LOGTAG, "MissingBlocklisthashesRepaired", "Missing blocklisthashes repaired succesfully");
                     tr.Commit();
                 }
             }
@@ -450,7 +454,7 @@ namespace Duplicati.Library.Main.Database
                 var x = cmd.ExecuteScalarInt64(sql_count, 0);
                 if (x > 0)
                 {
-                    m_result.AddMessage("Found duplicate blocklisthash entries, repairing");
+                    Logging.Log.WriteInformationMessage(LOGTAG, "DuplicateBlocklistHashes", "Found duplicate blocklisthash entries, repairing");
 
                     var unique_count = cmd.ExecuteScalarInt64(@"SELECT COUNT(*) FROM (SELECT DISTINCT ""BlocksetID"", ""Index"" FROM ""BlocklistHash"")", 0);
 
@@ -474,18 +478,18 @@ namespace Duplicati.Library.Main.Database
                     var real_count = cmd.ExecuteScalarInt64(@"SELECT Count(*) FROM ""BlocklistHash""", 0);
 
                     if (real_count != unique_count)
-                        throw new Duplicati.Library.Interface.UserInformationException(string.Format("Failed to repair, result should have been {0} blocklist hashes, but result was {1} blocklist hashes", unique_count, real_count));
+                        throw new Duplicati.Library.Interface.UserInformationException(string.Format("Failed to repair, result should have been {0} blocklist hashes, but result was {1} blocklist hashes", unique_count, real_count), "DuplicateBlocklistHashesRepairFailed");
 
                     try
                     {
-                        VerifyConsistency(tr, blocksize, hashsize, true);
+                        VerifyConsistency(blocksize, hashsize, true, tr);
                     }
                     catch(Exception ex)
                     {
-                        throw new Duplicati.Library.Interface.UserInformationException("Repaired blocklisthashes, but the database was broken afterwards, rolled back changes", ex);
+                        throw new Duplicati.Library.Interface.UserInformationException("Repaired blocklisthashes, but the database was broken afterwards, rolled back changes", "DuplicateBlocklistHashesRepairFailed", ex);
                     }
 
-                    m_result.AddMessage("Duplicate blocklisthashes repaired succesfully");
+                    Logging.Log.WriteInformationMessage(LOGTAG, "DuplicateBlocklistHashesRepaired", "Duplicate blocklisthashes repaired succesfully");
                     tr.Commit();
                 }
             }
@@ -558,17 +562,19 @@ ORDER BY
 "
                 ,blocksize, blockhashlength);
 
-                var en = blocklist.GetEnumerator();
-                foreach(var r in cmd.ExecuteReaderEnumerable(query, hash, length))
+                using (var en = blocklist.GetEnumerator())
                 {
-                    if (!en.MoveNext())
-                        throw new Exception(string.Format("Too few entries in source blocklist with hash {0}", hash));
-                    if (en.Current != r.GetString(0))
-                        throw new Exception(string.Format("Mismatch in blocklist with hash {0}", hash));
-                }
+                    foreach (var r in cmd.ExecuteReaderEnumerable(query, hash, length))
+                    {
+                        if (!en.MoveNext())
+                            throw new Exception(string.Format("Too few entries in source blocklist with hash {0}", hash));
+                        if (en.Current != r.GetString(0))
+                            throw new Exception(string.Format("Mismatch in blocklist with hash {0}", hash));
+                    }
 
-                if (en.MoveNext())
-                    throw new Exception(string.Format("Too many source blocklist entries in {0}", hash));
+                    if (en.MoveNext())
+                        throw new Exception(string.Format("Too many source blocklist entries in {0}", hash));
+                }
             }
         }
     }

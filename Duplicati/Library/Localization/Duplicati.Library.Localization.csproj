@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -7,9 +7,8 @@
     <OutputType>Library</OutputType>
     <RootNamespace>Duplicati.Library.Localization</RootNamespace>
     <AssemblyName>Duplicati.Library.Localization</AssemblyName>
-    <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\Main\Duplicati.snk</AssemblyOriginatorKeyFile>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>
     <TargetFrameworkProfile />
     <UseMSBuildEngine>false</UseMSBuildEngine>
   </PropertyGroup>
@@ -34,11 +33,11 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="NGettext, Version=0.6.1.0, Culture=neutral, PublicKeyToken=08d3d1c89dfd2985, processorArchitecture=MSIL">
-      <HintPath>..\..\..\packages\NGettext.0.6.2\lib\net45\NGettext.dll</HintPath>
-      <Private>True</Private>
+    <Reference Include="NGettext, Version=0.6.1.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\..\..\packages\NGettext.0.6.4\lib\net46\NGettext.dll</HintPath>
     </Reference>
     <Reference Include="System" />
+    <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -49,12 +48,11 @@
     <Compile Include="MoLocalizationService.cs" />
     <Compile Include="LocalizationContext.cs" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\Localizations\duplicati\*.mo" />
+  </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>    
-    <EmbeddedResource Include="..\..\..\Localizations\duplicati\*.mo" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

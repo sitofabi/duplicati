@@ -8,9 +8,10 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions
+from selenium.webdriver.firefox.options import Options
 
 if "TRAVIS_BUILD_NUMBER" in os.environ:
-    if not "SAUCE_USERNAME" in os.environ:
+    if "SAUCE_USERNAME" not in os.environ:
         print "No sauce labs login credentials found. Stopping tests..."
         sys.exit(0)
 
@@ -31,7 +32,9 @@ else:
     print "Using LOCAL webdriver"
     profile = webdriver.FirefoxProfile()
     profile.set_preference("intl.accept_languages", "en")
-    driver = webdriver.Firefox(profile)
+    options = Options()
+    options.set_headless(headless=True)
+    driver = webdriver.Firefox(profile, firefox_options=options)
     driver.maximize_window()
 
 
@@ -77,11 +80,11 @@ def wait_for_text(time, xpath, text):
 
 BACKUP_NAME = "BackupName"
 PASSWORD = "the_backup_password_is_really_long_and_safe"
-SOURCE_FOLDER = "duplicati_gui_test_source"
-DESTINATION_FOLDER = "duplicati_gui_test_destination"
-DESTINATION_FOLDER_DIRECT_RESTORE = "duplicati_gui_test_destination_direct_restore"
-RESTORE_FOLDER = "duplicati_gui_test_restore"
-DIRECT_RESTORE_FOLDER = "duplicati_gui_test_direct_restore"
+SOURCE_FOLDER = os.path.abspath("duplicati_gui_test_source")
+DESTINATION_FOLDER = os.path.abspath("duplicati_gui_test_destination")
+DESTINATION_FOLDER_DIRECT_RESTORE = os.path.abspath("duplicati_gui_test_destination_direct_restore")
+RESTORE_FOLDER = os.path.abspath("duplicati_gui_test_restore")
+DIRECT_RESTORE_FOLDER = os.path.abspath("duplicati_gui_test_direct_restore")
 
 # wait 5 seconds for duplicati server to start
 time.sleep(5)
@@ -89,7 +92,7 @@ time.sleep(5)
 driver.implicitly_wait(10)
 driver.get("http://localhost:8200/ngax/index.html")
 
-if not "Duplicati" in driver.title:
+if "Duplicati" not in driver.title:
     raise Exception("Unable to load duplicati GUI!")
 
 # Create and hash random files in the source folder
@@ -97,8 +100,15 @@ write_random_file(1024 * 1024, SOURCE_FOLDER + os.sep + "1MB.test")
 write_random_file(100 * 1024, SOURCE_FOLDER + os.sep + "subfolder" + os.sep + "100KB.test")
 sha1_source = sha1_folder(SOURCE_FOLDER)
 
+# Dismiss the password request
+driver.find_element_by_link_text("No, my machine has only a single account").click()
+
 # Add new backup
 driver.find_element_by_link_text("Add backup").click()
+
+# Choose the "add new" option
+driver.find_element_by_id("blank").click()
+driver.find_element_by_xpath("//input[@class='submit next']").click()
 
 # Add new backup - General page
 time.sleep(1)
@@ -127,19 +137,24 @@ driver.find_element_by_id("nextStep4").click()
 driver.find_element_by_id("save").click()
 
 # Run the backup job and wait for finish
-driver.find_element_by_link_text("Run now").click()
+driver.find_element_by_link_text(BACKUP_NAME).click()
+[n for n in driver.find_elements_by_xpath("//dl[@class='taskmenu']/dd/p/span[contains(text(),'Run now')]") if n.is_displayed()][0].click()
 wait_for_text(60, "//div[@class='task ng-scope']/dl[2]/dd[1]", "(took ")
 
 # Restore
-driver.find_element_by_link_text(BACKUP_NAME).click()
-driver.find_element_by_xpath("//span[contains(text(),'Restore files ...')]").click()
+if len([n for n in driver.find_elements_by_xpath("//span[contains(text(),'Restore files ...')]") if n.is_displayed()]) == 0:
+    driver.find_element_by_link_text(BACKUP_NAME).click()
+
+[n for n in driver.find_elements_by_xpath("//span[contains(text(),'Restore files ...')]") if n.is_displayed()][0].click()
 driver.find_element_by_xpath("//span[contains(text(),'" + SOURCE_FOLDER + "')]")  # wait for filelist
 time.sleep(1)
 driver.find_element_by_xpath("//restore-file-picker/ul/li/div/a[2]").click()  # select root folder checkbox
-driver.find_element_by_link_text("Continue").click()
+
+driver.find_element_by_xpath("//form[@id='restore']/div[1]/div[@class='buttons']/a/span[contains(text(), 'Continue')]").click()
 driver.find_element_by_id("restoretonewpath").click()
 driver.find_element_by_id("restore_path").send_keys(RESTORE_FOLDER)
-driver.find_element_by_link_text("Restore").click()
+driver.find_element_by_xpath("//form[@id='restore']/div/div[@class='buttons']/a/span[contains(text(),'Restore')]").click()
+
 # wait for restore to finish
 wait_for_text(60, "//form[@id='restore']/div[3]/h3/div[1]", "Your files and folders have been restored successfully.")
 
@@ -147,12 +162,19 @@ wait_for_text(60, "//form[@id='restore']/div[3]/h3/div[1]", "Your files and fold
 sha1_restore = sha1_folder(RESTORE_FOLDER)
 
 # cleanup: delete source and restore folder and rename destination folder for direct restore
-shutil.rmtree(SOURCE_FOLDER)
-shutil.rmtree(RESTORE_FOLDER)
+if os.path.exists(SOURCE_FOLDER):
+    shutil.rmtree(SOURCE_FOLDER)
+if os.path.exists(RESTORE_FOLDER):
+    shutil.rmtree(RESTORE_FOLDER)
 os.rename(DESTINATION_FOLDER, DESTINATION_FOLDER_DIRECT_RESTORE)
 
 # direct restore
-driver.find_element_by_link_text("Restore backup").click()
+driver.find_element_by_link_text("Restore").click()
+
+# Choose the "restore direct" option
+driver.find_element_by_id("direct").click()
+driver.find_element_by_xpath("//input[@class='submit next']").click()
+
 time.sleep(1)
 driver.find_element_by_link_text("Manually type path").click()
 driver.find_element_by_id("file_path").send_keys(DESTINATION_FOLDER_DIRECT_RESTORE)
@@ -163,10 +185,13 @@ driver.find_element_by_id("connect").click()
 driver.find_element_by_xpath("//span[contains(text(),'" + SOURCE_FOLDER + "')]")  # wait for filelist
 time.sleep(1)
 driver.find_element_by_xpath("//restore-file-picker/ul/li/div/a[2]").click()  # select root folder checkbox
-driver.find_element_by_link_text("Continue").click()
+time.sleep(1)
+driver.find_element_by_xpath("//form[@id='restore']/div[1]/div[@class='buttons']/a/span[contains(text(), 'Continue')]").click()
+
 driver.find_element_by_id("restoretonewpath").click()
 driver.find_element_by_id("restore_path").send_keys(DIRECT_RESTORE_FOLDER)
-driver.find_element_by_link_text("Restore").click()
+driver.find_element_by_xpath("//form[@id='restore']/div/div[@class='buttons']/a/span[contains(text(),'Restore')]").click()
+
 # wait for restore to finish
 wait_for_text(60, "//form[@id='restore']/div[3]/h3/div[1]", "Your files and folders have been restored successfully.")
 

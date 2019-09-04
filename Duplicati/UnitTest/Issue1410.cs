@@ -22,24 +22,13 @@ using System.Collections.Generic;
 
 namespace Duplicati.UnitTest
 {
-    [TestFixture]
     public class Issue1410 : BasicSetupHelper
     {
-        [OneTimeSetUp]
-        public override void PrepareSourceData()
-        {
-            base.PrepareSourceData();
-
-            Directory.CreateDirectory(DATAFOLDER);
-            Directory.CreateDirectory(TARGETFOLDER);
-        }
-
         [Test]
         [Category("Targeted")]
         public void RunCommands()
         {
 			var testopts = TestOptions;
-            testopts["verbose"] = "true";
 
             var data = new byte[1024 * 1024 * 10];
             File.WriteAllBytes(Path.Combine(DATAFOLDER, "a"), data);

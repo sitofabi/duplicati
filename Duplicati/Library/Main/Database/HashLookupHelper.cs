@@ -28,14 +28,14 @@ namespace Duplicati.Library.Main
         /// <summary>
         /// The lookup table
         /// </summary>
-        private SortedList<string, T>[] m_lookup;
+        private readonly SortedList<string, T>[] m_lookup;
         /// <summary>
         /// The number of entries in the table
         /// </summary>
         private readonly ulong m_entries;
         
         /// <summary>
-        /// Initializes a new instance of the <see cref="Duplicati.Library.Main.HashLookupHelper"/> class.
+        /// Initializes a new instance of the <see cref="Duplicati.Library.Main.HashLookupHelper{T}"/> class.
         /// </summary>
         /// <param name="maxmemory">The maximum amount of bytes to use for the lookup table</param>
         public HashLookupHelper (ulong maxmemory)
@@ -57,9 +57,8 @@ namespace Duplicati.Library.Main
             var lst = m_lookup[key];
             if (lst == null)
                 lst = m_lookup[key] = new SortedList<string, T>(1);
-            
-            T tmp;
-            if (!lst.TryGetValue(hash + ':' + size.ToString(), out tmp))
+
+            if (!lst.TryGetValue(hash + ':' + size.ToString(), out _))
             {
                 lst.Add(hash + ':' + size.ToString(), value);
                 return true;

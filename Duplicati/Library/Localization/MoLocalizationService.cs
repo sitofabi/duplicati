@@ -33,20 +33,25 @@ namespace Duplicati.Library.Localization
         /// <summary>
         /// The catalog containing the translations
         /// </summary>
-        private ICatalog catalog = new Catalog();
+        private readonly ICatalog catalog = new Catalog();
 
         /// <summary>
         /// The environment variable used to locate MO files
         /// </summary>
         public const string LOCALIZATIONDIR_ENVNAME = "LOCALIZATION_FOLDER";
 
+        private static string LOCALIZATIONDIR_VALUE =
+            string.IsNullOrWhiteSpace(AppDomain.CurrentDomain.GetData(LOCALIZATIONDIR_ENVNAME) as string)
+                  ? Environment.GetEnvironmentVariable(LOCALIZATIONDIR_ENVNAME)
+                  : AppDomain.CurrentDomain.GetData(LOCALIZATIONDIR_ENVNAME) as string;
+
         /// <summary>
         /// Path to search for extra .mo files in
         /// </summary>
         public static string[] SearchPaths =
-            string.IsNullOrWhiteSpace(AppDomain.CurrentDomain.GetData(LOCALIZATIONDIR_ENVNAME) as string)
+            string.IsNullOrWhiteSpace(LOCALIZATIONDIR_VALUE)
                 ? new string[] { Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) }
-                : (AppDomain.CurrentDomain.GetData(LOCALIZATIONDIR_ENVNAME) as string).Split(new char[] { Path.PathSeparator }, StringSplitOptions.RemoveEmptyEntries);
+                : (LOCALIZATIONDIR_VALUE).Split(new char[] { Path.PathSeparator }, StringSplitOptions.RemoveEmptyEntries);
 
 
         /// <summary>
@@ -67,7 +72,7 @@ namespace Duplicati.Library.Localization
         {
             var filenames = new string[] { 
                 // Load the specialized version first
-                string.Format("localization-{0}.mo", ci.Name), 
+                string.Format("localization-{0}.mo", ci.Name.Replace('-', '_')), 
                 // Then try the generic language version
                 string.Format("localization-{0}.mo", ci.TwoLetterISOLanguageName) 
             };
@@ -92,7 +97,7 @@ namespace Duplicati.Library.Localization
                     var names =
                         from name in SearchAssembly.GetManifestResourceNames()
                         let m = CI_MATCHER.Match(name)
-                        let c = m.Success && string.Equals(m.Value, fn, StringComparison.InvariantCultureIgnoreCase) ? LocalizationService.ParseCulture(m.Groups["culture"].Value) : null
+                        let c = m.Success && string.Equals(m.Value, fn, StringComparison.OrdinalIgnoreCase) ? LocalizationService.ParseCulture(m.Groups["culture"].Value) : null
                         where c != null
                         select name;
 

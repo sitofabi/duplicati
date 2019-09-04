@@ -17,41 +17,43 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 // 
 #endregion
+using Duplicati.Library.Common.IO;
+using Duplicati.Library.Interface;
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Net;
-using Duplicati.Library.Interface;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Duplicati.Library.Backend
 {
+    // ReSharper disable once UnusedMember.Global
+    // This class is instantiated dynamically in the BackendLoader.
     public class CloudFiles : IBackend, IStreamingBackend
     {
         public const string AUTH_URL_US = "https://identity.api.rackspacecloud.com/auth";
         public const string AUTH_URL_UK = "https://lon.auth.api.rackspacecloud.com/v1.0";
         private const string DUMMY_HOSTNAME = "api.mosso.com";
 
-        public static readonly KeyValuePair<string, string>[] KNOWN_CLOUDFILES_PROVIDERS = new KeyValuePair<string, string>[] {
-            new KeyValuePair<string, string>("Rackspace US", AUTH_URL_US),
-            new KeyValuePair<string, string>("Rackspace UK", AUTH_URL_UK),
-        };
-
-
         private const int ITEM_LIST_LIMIT = 1000;
-        private string m_username;
-        private string m_password;
-        private string m_path;
+        private readonly string m_username;
+        private readonly string m_password;
+        private readonly string m_path;
 
         private string m_storageUrl = null;
         private string m_authToken = null;
-        private string m_authUrl;
+        private readonly string m_authUrl;
 
         private readonly byte[] m_copybuffer = new byte[Duplicati.Library.Utility.Utility.DEFAULT_BUFFER_SIZE];
 
+        // ReSharper disable once UnusedMember.Global
+        // This constructor is needed by the BackendLoader.
         public CloudFiles()
         {
         }
 
+        // ReSharper disable once UnusedMember.Global
+        // This constructor is needed by the BackendLoader.
         public CloudFiles(string url, Dictionary<string, string> options)
         {
             var uri = new Utility.Uri(url);
@@ -72,9 +74,9 @@ namespace Duplicati.Library.Backend
                 m_password = uri.Password;
 
             if (string.IsNullOrEmpty(m_username))
-                throw new UserInformationException(Strings.CloudFiles.NoUserIDError);
+                throw new UserInformationException(Strings.CloudFiles.NoUserIDError, "CloudFilesNoUserID");
             if (string.IsNullOrEmpty(m_password))
-                throw new UserInformationException(Strings.CloudFiles.NoAPIKeyError);
+                throw new UserInformationException(Strings.CloudFiles.NoAPIKeyError, "CloudFilesNoApiKey");
 
             //Fallback to the previous format
             if (url.Contains(DUMMY_HOSTNAME))
@@ -83,10 +85,10 @@ namespace Duplicati.Library.Backend
 
                 if (!string.IsNullOrEmpty(u.UserInfo))
                 {
-                    if (u.UserInfo.IndexOf(":") >= 0)
+                    if (u.UserInfo.IndexOf(":", StringComparison.Ordinal) >= 0)
                     {
-                        m_username = u.UserInfo.Substring(0, u.UserInfo.IndexOf(":"));
-                        m_password = u.UserInfo.Substring(u.UserInfo.IndexOf(":") + 1);
+                        m_username = u.UserInfo.Substring(0, u.UserInfo.IndexOf(":", StringComparison.Ordinal));
+                        m_password = u.UserInfo.Substring(u.UserInfo.IndexOf(":", StringComparison.Ordinal) + 1);
                     }
                     else
                     {
@@ -107,9 +109,9 @@ namespace Duplicati.Library.Backend
                 m_path = uri.HostAndPath;
             }
 
-            if (m_path.EndsWith("/"))
+            if (m_path.EndsWith("/", StringComparison.Ordinal))
                 m_path = m_path.Substring(0, m_path.Length - 1);
-            if (!m_path.StartsWith("/"))
+            if (!m_path.StartsWith("/", StringComparison.Ordinal))
                 m_path = "/" + m_path;
 
             if (!options.TryGetValue("cloudfiles-authentication-url", out m_authUrl))
@@ -128,9 +130,8 @@ namespace Duplicati.Library.Backend
             get { return "cloudfiles"; }
         }
 
-        public List<IFileEntry> List()
+        public IEnumerable<IFileEntry> List()
         {
-            var files = new List<IFileEntry>();
             string extraUrl = "?format=xml&limit=" + ITEM_LIST_LIMIT.ToString();
             string markerUrl = "";
 
@@ -182,7 +183,7 @@ namespace Duplicati.Library.Backend
                         mod = new DateTime();
 
                     lastItemName = name;
-                    files.Add(new FileEntry(name, size, mod, mod));
+                    yield return new FileEntry(name, size, mod, mod);
                 }
 
                 repeat = lst.Count == ITEM_LIST_LIMIT;
@@ -191,14 +192,12 @@ namespace Duplicati.Library.Backend
                     markerUrl = "&marker=" + Library.Utility.Uri.UrlEncode(lastItemName);
 
             } while (repeat);
-
-            return files;
         }
 
-        public void Put(string remotename, string filename)
+        public Task PutAsync(string remotename, string filename, CancellationToken cancelToken)
         {
             using (System.IO.FileStream fs = System.IO.File.OpenRead(filename))
-                Put(remotename, fs);
+                return PutAsync(remotename, fs, cancelToken);
         }
 
         public void Get(string remotename, string filename)
@@ -263,7 +262,7 @@ namespace Duplicati.Library.Backend
         public void Test()
         {
             //The "Folder not found" is not detectable :(
-            List();
+            this.TestList();
         }
 
         public void CreateFolder()
@@ -287,9 +286,9 @@ namespace Duplicati.Library.Backend
 
         #region IStreamingBackend Members
 
-        public bool SupportsStreaming
+        public string[] DNSName
         {
-            get { return true; }
+            get { return new string[] { new Uri(m_authUrl).Host, string.IsNullOrWhiteSpace(m_storageUrl) ? null : new Uri(m_storageUrl).Host }; }
         }
 
         public void Get(string remotename, System.IO.Stream stream)
@@ -305,12 +304,12 @@ namespace Duplicati.Library.Backend
                 string md5Hash = resp.Headers["ETag"];
                 Utility.Utility.CopyStream(mds, stream, true, m_copybuffer);
 
-                if (mds.GetFinalHashString().ToLower() != md5Hash.ToLower())
+                if (!String.Equals(mds.GetFinalHashString(), md5Hash, StringComparison.OrdinalIgnoreCase))
                     throw new Exception(Strings.CloudFiles.ETagVerificationError);
             }
         }
 
-        public void Put(string remotename, System.IO.Stream stream)
+        public async Task PutAsync(string remotename, System.IO.Stream stream, CancellationToken cancelToken)
         {
             HttpWebRequest req = CreateRequest("/" + remotename, "");
             req.Method = "PUT";
@@ -323,7 +322,7 @@ namespace Duplicati.Library.Backend
             /*if (stream.CanSeek)
             {
                 System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create();
-                req.Headers["ETag"] = Core.Utility.ByteArrayAsHexString(md5.ComputeHash(stream)).ToLower();
+                req.Headers["ETag"] = Core.Utility.ByteArrayAsHexString(md5.ComputeHash(stream)).ToLower(System.Globalization.CultureInfo.InvariantCulture);
                 stream.Seek(0, System.IO.SeekOrigin.Begin);
 
                 using (System.IO.Stream s = req.GetRequestStream())
@@ -346,11 +345,15 @@ namespace Duplicati.Library.Backend
             {
                 string fileHash = null;
 
+                long streamLen = -1;
+                try { streamLen = stream.Length; }
+                catch { }
+
                 Utility.AsyncHttpRequest areq = new Utility.AsyncHttpRequest(req);
-                using (System.IO.Stream s = areq.GetRequestStream())
+                using (System.IO.Stream s = areq.GetRequestStream(streamLen))
                 using (var mds = new Utility.MD5CalculatingStream(s))
                 {
-                    Utility.Utility.CopyStream(stream, mds, true, m_copybuffer);
+                    await Utility.Utility.CopyStreamAsync(stream, mds, tryRewindSource: true, cancelToken: cancelToken);
                     fileHash = mds.GetFinalHashString();
                 }
 
@@ -368,7 +371,7 @@ namespace Duplicati.Library.Backend
                 catch (WebException wex)
                 {
                     //Catch 404 and turn it into a FolderNotFound error
-                    if (wex.Response is HttpWebResponse && ((HttpWebResponse)wex.Response).StatusCode == HttpStatusCode.NotFound)
+                    if (wex.Response is HttpWebResponse response && response.StatusCode == HttpStatusCode.NotFound)
                         throw new FolderMissingException(wex);
 
                     //Other error, just re-throw
@@ -376,7 +379,7 @@ namespace Duplicati.Library.Backend
                 }
 
 
-                if (md5Hash == null || md5Hash.ToLower() != fileHash.ToLower())
+                if (md5Hash == null || !String.Equals(md5Hash, fileHash, StringComparison.OrdinalIgnoreCase))
                 {
                     //Remove the broken file
                     try { Delete(remotename); }
@@ -413,7 +416,7 @@ namespace Duplicati.Library.Backend
             HttpWebRequest req = (HttpWebRequest)HttpWebRequest.Create(m_storageUrl + UrlEncode(m_path + remotename) + query);
             req.Headers.Add("X-Auth-Token", UrlEncode(m_authToken));
 
-            req.UserAgent = "Duplicati CloudFiles Backend v" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
+            req.UserAgent = "Duplicati CloudFiles Backend v" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
             req.KeepAlive = false;
             req.PreAuthenticate = true;
             req.AllowWriteStreamBuffering = false;

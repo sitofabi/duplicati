@@ -18,13 +18,14 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using Duplicati.Library.Interface;
 
 namespace Duplicati.Library.Main.Operation
 {
     internal class ListAffected
     {
-        private Options m_options;
-        private ListAffectedResults m_result;
+        private readonly Options m_options;
+        private readonly ListAffectedResults m_result;
 
         public ListAffected(Options options, ListAffectedResults result)
         {
@@ -32,17 +33,34 @@ namespace Duplicati.Library.Main.Operation
             m_result = result;
         }
             
-        public void Run(List<string> args)
+        public void Run(List<string> args, Action<Duplicati.Library.Interface.IListAffectedResults> callback = null)
         {
+            if (!System.IO.File.Exists(m_options.Dbpath))
+                throw new UserInformationException(string.Format("Database file does not exist: {0}", m_options.Dbpath), "DatabaseDoesNotExist");
+
             using(var db = new Database.LocalListAffectedDatabase(m_options.Dbpath))
             {
                 m_result.SetDatabase(db);
-                m_result.SetResult(
-                    db.GetFilesets(args).OrderByDescending(x => x.Time).ToArray(),
-                    db.GetFiles(args).ToArray(),
-                    db.GetLogLines(args).ToArray(),
-                    db.GetVolumes(args).ToArray()
-                );
+                if (callback == null)
+                {
+                    m_result.SetResult(
+                        db.GetFilesets(args).OrderByDescending(x => x.Time).ToArray(),
+                        db.GetFiles(args).ToArray(),
+                        db.GetLogLines(args).ToArray(),
+                        db.GetVolumes(args).ToArray()
+                    );
+                }
+                else
+                {
+                    m_result.SetResult(
+                        db.GetFilesets(args).OrderByDescending(x => x.Time),
+                        db.GetFiles(args),
+                        db.GetLogLines(args),
+                        db.GetVolumes(args)
+                    );
+
+                    callback(m_result);
+                }
             }
         }
     }

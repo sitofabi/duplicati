@@ -14,21 +14,26 @@
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
-using System;
-using System.Linq;
-using System.Collections.Generic;
-using Duplicati.Library.Interface;
 using CG.Web.MegaApiClient;
+using Duplicati.Library.Common.IO;
+using Duplicati.Library.Interface;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Duplicati.Library.Backend.Mega
 {
+    // ReSharper disable once UnusedMember.Global
+    // This class is instantiated dynamically in the BackendLoader.
     public class MegaBackend: IBackend, IStreamingBackend
     {
-        private string m_username = null;
-        private string m_password = null;
+        private readonly string m_username = null;
+        private readonly string m_password = null;
         private Dictionary<string, List<INode>> m_filecache;
         private INode m_currentFolder = null;
-        private string m_prefix = null;
+        private readonly string m_prefix = null;
 
         private MegaApiClient m_client;
 
@@ -66,9 +71,9 @@ namespace Duplicati.Library.Backend.Mega
                 m_password = uri.Password;
 
             if (string.IsNullOrEmpty(m_username))
-                throw new UserInformationException(Strings.MegaBackend.NoUsernameError);
+                throw new UserInformationException(Strings.MegaBackend.NoUsernameError, "MegaNoUsername");
             if (string.IsNullOrEmpty(m_password))
-                throw new UserInformationException(Strings.MegaBackend.NoPasswordError);
+                throw new UserInformationException(Strings.MegaBackend.NoPasswordError, "MegaNoPassword");
 
             m_prefix = uri.HostAndPath ?? "";
         }
@@ -77,11 +82,11 @@ namespace Duplicati.Library.Backend.Mega
         {
             var parts = m_prefix.Split(new string[] { "/" }, StringSplitOptions.RemoveEmptyEntries);
             var nodes = Client.GetNodes();
-            INode parent = nodes.Where(x => x.Type == NodeType.Root).First();
+            INode parent = nodes.First(x => x.Type == NodeType.Root);
 
             foreach(var n in parts)
             {
-                var item = nodes.Where(x => x.Name == n && x.Type == NodeType.Directory && x.ParentId == parent.Id).FirstOrDefault();
+                var item = nodes.FirstOrDefault(x => x.Name == n && x.Type == NodeType.Directory && x.ParentId == parent.Id);
                 if (item == null)
                 {
                     if (!autocreate)
@@ -112,12 +117,12 @@ namespace Duplicati.Library.Backend.Mega
         private INode GetFileNode(string name)
         {
             if (m_filecache != null && m_filecache.ContainsKey(name))
-                return m_filecache[name].OrderByDescending(x => x.LastModificationDate).First();
+                return m_filecache[name].OrderByDescending(x => x.ModificationDate).First();
 
             ResetFileCache();
 
             if (m_filecache != null && m_filecache.ContainsKey(name))
-                return m_filecache[name].OrderByDescending(x => x.LastModificationDate).First();
+                return m_filecache[name].OrderByDescending(x => x.ModificationDate).First();
             
             throw new FileMissingException();
         }
@@ -139,14 +144,14 @@ namespace Duplicati.Library.Backend.Mega
 
         #region IStreamingBackend implementation
 
-        public void Put(string remotename, System.IO.Stream stream)
+        public async Task PutAsync(string remotename, System.IO.Stream stream, CancellationToken cancelToken)
         {
             try
             {
                 if (m_filecache == null)
                     ResetFileCache();
 
-                var el = Client.Upload(stream, remotename, CurrentFolder);
+                var el = await Client.UploadAsync(stream, remotename, CurrentFolder, new Progress(), null, cancelToken);
                 if (m_filecache.ContainsKey(remotename))
                     Delete(remotename);
 
@@ -170,22 +175,21 @@ namespace Duplicati.Library.Backend.Mega
 
         #region IBackend implementation
 
-        public List<IFileEntry> List()
+        public IEnumerable<IFileEntry> List()
         {
             if (m_filecache == null)
                 ResetFileCache();
             
-            return (
+            return
                 from n in m_filecache.Values
-                let item = n.OrderByDescending(x => x.LastModificationDate).First()
-                select (IFileEntry)new FileEntry(item.Name, item.Size, item.LastModificationDate, item.LastModificationDate)
-            ).ToList();
+                let item = n.OrderByDescending(x => x.ModificationDate).First()
+                select new FileEntry(item.Name, item.Size, item.ModificationDate ?? new DateTime(0), item.ModificationDate ?? new DateTime(0));
         }
 
-        public void Put(string remotename, string filename)
+        public Task PutAsync(string remotename, string filename, CancellationToken cancelToken)
         {
             using (System.IO.FileStream fs = System.IO.File.OpenRead(filename))
-                Put(remotename, fs);
+                return PutAsync(remotename, fs, cancelToken);
         }
 
         public void Get(string remotename, string filename)
@@ -218,7 +222,7 @@ namespace Duplicati.Library.Backend.Mega
 
         public void Test()
         {
-            List();
+            this.TestList();
         }
 
         public void CreateFolder()
@@ -261,6 +265,11 @@ namespace Duplicati.Library.Backend.Mega
             }
         }
 
+        public string[] DNSName
+        {
+            get { return null; }
+        }
+
         #endregion
 
         #region IDisposable implementation
@@ -270,6 +279,13 @@ namespace Duplicati.Library.Backend.Mega
         }
 
         #endregion
+
+        private class Progress : IProgress<double>
+        {
+            public void Report(double value)
+            {
+                // No implementation as we have already wrapped the stream in our own progress reporting stream
+            }
+        }
     }
 }
-

@@ -1,4 +1,4 @@
-backupApp.controller('HomeController', function ($scope, $location, ServerStatus, BackupList, AppService, DialogService, gettextCatalog) {
+backupApp.controller('HomeController', function ($scope, $location, ServerStatus, BackupList, AppService, AppUtils, DialogService, gettextCatalog) {
     $scope.backups = BackupList.watch($scope);
 
     $scope.doRun = function(id) {
@@ -49,14 +49,13 @@ backupApp.controller('HomeController', function ($scope, $location, ServerStatus
         $location.path('/log/' + id);
     };
 
+    $scope.doCommandLine = function(id, name) {
+        $location.path('/commandline/' + id);
+    };
+
     $scope.doCreateBugReport = function(id, name) {
         AppService.post('/backup/' + id + '/createreport');
     };
 
-    $scope.formatDuration = function(duration) {
-        if (duration != null && duration.indexOf(".") > 0)
-            return duration.substring(0, duration.length - duration.indexOf("."));
-        else
-            return duration;
-    };
+    $scope.formatDuration = AppUtils.formatDuration;
 });

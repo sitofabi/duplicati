@@ -17,45 +17,32 @@
 //  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Duplicati.Library.Main;
 
 namespace Duplicati.CommandLine
 {
-    public class ConsoleOutput : Library.Main.IMessageSink
+    public class ConsoleOutput : Library.Main.IMessageSink, IDisposable
     {
-        private object m_lock = new object();
+        private readonly object m_lock = new object();
         
         public bool QuietConsole { get; private set; }
-        public bool VerboseOutput { get; private set; }
         public bool VerboseErrors { get; private set; }
+        public TextWriter Output { get; private set; }
+        public bool FullResults { get; private set; }
         
-        public ConsoleOutput(Dictionary<string, string> options)
+        public ConsoleOutput(TextWriter output, Dictionary<string, string> options)
         {
+            this.Output = output;
             this.QuietConsole = Library.Utility.Utility.ParseBoolOption(options, "quiet-console");
-            this.VerboseOutput = Library.Utility.Utility.ParseBoolOption(options, "verbose");
             this.VerboseErrors = Library.Utility.Utility.ParseBoolOption(options, "debug-output");
+            this.FullResults = Library.Utility.Utility.ParseBoolOption(options, "full-results");
         }
-    
+
         #region IMessageSink implementation
-        
-        public IBackendProgress BackendProgress { get; set; }
-        
-        private IOperationProgress m_operationProgress;
-        public IOperationProgress OperationProgress
-        {
-            get { return m_operationProgress; }
-            set 
-            { 
-                if (m_operationProgress != null)
-                    m_operationProgress.PhaseChanged -= InvokePhaseChanged;
-                    
-                m_operationProgress = value; 
-                
-                if (value != null)
-                    m_operationProgress.PhaseChanged += InvokePhaseChanged;
-            }
-        }
-        
+
+        public IOperationProgress OperationProgress { get; private set; }
+
         private void InvokePhaseChanged(OperationPhase p1, OperationPhase p2)
         {
             if (PhaseChanged != null)
@@ -69,55 +56,73 @@ namespace Duplicati.CommandLine
             lock(m_lock)
                 if (type == BackendEventType.Started)
                 {
-                    if (action == BackendActionType.Put)
-                        Console.WriteLine("  Uploading file ({0}) ...", Library.Utility.Utility.FormatSizeString(size));
-                    else if (action == BackendActionType.Get)
-                        Console.WriteLine("  Downloading file ({0}) ...", size < 0 ? "unknown" : Library.Utility.Utility.FormatSizeString(size));
-                    else if (action == BackendActionType.List)
-                        Console.WriteLine("  Listing remote folder ...");
-                    else if (action == BackendActionType.CreateFolder)
-                        Console.WriteLine("  Creating remote folder ...");
-                    else if (action == BackendActionType.Delete)
-                        Console.WriteLine("  Deleting file {0}{1} ...", path, size < 0 ? "" : (" (" + Library.Utility.Utility.FormatSizeString(size) + ")"));
+                    switch (action)
+                    {
+                        case BackendActionType.Put:
+                            Output.WriteLine("  Uploading file ({0}) ...", Library.Utility.Utility.FormatSizeString(size));
+                            break;
+                        case BackendActionType.Get:
+                            Output.WriteLine("  Downloading file ({0}) ...", size < 0 ? "unknown" : Library.Utility.Utility.FormatSizeString(size));
+                            break;
+                        case BackendActionType.List:
+                            Output.WriteLine("  Listing remote folder ...");
+                            break;
+                        case BackendActionType.CreateFolder:
+                            Output.WriteLine("  Creating remote folder ...");
+                            break;
+                        case BackendActionType.Delete:
+                            Output.WriteLine("  Deleting file {0}{1} ...", path, size < 0 ? "" : (" (" + Library.Utility.Utility.FormatSizeString(size) + ")"));
+                            break;
+                    }
                 }
         }
-                        
-        public void VerboseEvent(string message, object[] args)
+
+        public void SetBackendProgress(IBackendProgress progress)
         {
-            if (VerboseOutput)
-                lock(m_lock)
-                    Console.WriteLine(message, args);
+            // Do nothing.  Implementation needed for IMessageSink interface.
         }
+
+        public void SetOperationProgress(IOperationProgress progress)
+        {
+            if (OperationProgress != null)
+                this.OperationProgress.PhaseChanged -= InvokePhaseChanged;
+
+            OperationProgress = progress;
+
+            if (progress != null)
+                this.OperationProgress.PhaseChanged += InvokePhaseChanged;
+        }
+
+        public void WriteMessage(Library.Logging.LogEntry entry)
+        {
+            if (QuietConsole)
+                return;
+                
+            lock (m_lock)
+            {
+                if (entry.Exception != null)
+                    Output.WriteLine("{0} => {1}", entry.FormattedMessage, VerboseErrors ? entry.Exception.ToString() : entry.Exception.Message);
+                else if (entry.Level == Library.Logging.LogMessageType.DryRun)
+                    Output.WriteLine("[Dryrun]: {0}", entry.FormattedMessage);
+
+                else
+                    Output.WriteLine(entry.FormattedMessage);
+            }
+
+        }
+
         public void MessageEvent(string message)
         {
-            if (!QuietConsole)
-                lock(m_lock)
-                    Console.WriteLine(message);
+            if (QuietConsole)
+                return;
+                
+            lock (m_lock)
+                Output.WriteLine(message);
+
         }
-        
-        public void RetryEvent(string message, Exception ex)
+
+        public void Dispose()
         {
-            if (!QuietConsole)
-                lock(m_lock)
-                    Console.WriteLine(ex == null ? message : string.Format("{0} => {1}", message, VerboseErrors ? ex.ToString() : ex.Message));
-        }
-        public void WarningEvent(string message, Exception ex)
-        {
-            if (!QuietConsole)
-                lock(m_lock)
-                    Console.WriteLine(ex == null ? message : string.Format("{0} => {1}", message, VerboseErrors ? ex.ToString() : ex.Message));
-        }
-        public void ErrorEvent(string message, Exception ex)
-        {
-            if (!QuietConsole)
-                lock(m_lock)
-                    Console.WriteLine(ex == null ? message : string.Format("{0} => {1}", message, VerboseErrors ? ex.ToString() : ex.Message));
-        }
-        public void DryrunEvent(string message)
-        {
-            if (!QuietConsole)
-                lock(m_lock)
-                    Console.WriteLine(string.Format("[Dryrun]: {0}", message));
         }
         #endregion
     }

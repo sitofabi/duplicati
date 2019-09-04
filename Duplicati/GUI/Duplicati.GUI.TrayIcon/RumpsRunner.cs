@@ -21,6 +21,7 @@ using System.Linq;
 using System.IO;
 using System.Threading.Tasks;
 using CoCoL;
+using Duplicati.Library.Common;
 
 namespace Duplicati.GUI.TrayIcon
 {
@@ -29,21 +30,21 @@ namespace Duplicati.GUI.TrayIcon
         private class MenuItemWrapper : Duplicati.GUI.TrayIcon.IMenuItem
         {
 
-            private RumpsRunner m_parent;
+            private readonly RumpsRunner m_parent;
 
-            private string m_text;
-            private MenuIcons m_icon;
-            private bool m_enabled;
-            private bool m_default;
+            public bool Default { get; private set; }
+            public bool Enabled { get; private set; }
+            public MenuIcons Icon { get; private set; }
+            public string Text { get; private set; }
 
-            public MenuItemWrapper(RumpsRunner parent, string text, Duplicati.GUI.TrayIcon.MenuIcons icon, Action callback, IList<Duplicati.GUI.TrayIcon.IMenuItem> subitems)
+            public MenuItemWrapper(RumpsRunner parent, string text, Action callback, IList<Duplicati.GUI.TrayIcon.IMenuItem> subitems)
             {
                 m_parent = parent;
                 Key = Guid.NewGuid().ToString("N");
-                m_text = text ?? "";
+                this.Text = text ?? "";
                 Callback = callback;
-                m_enabled = true;
-                m_default = false;
+                this.Enabled = true;
+                this.Default = false;
                 if (subitems != null)
                     Subitems = subitems.Cast<MenuItemWrapper>().ToList();
             }
@@ -56,52 +57,30 @@ namespace Duplicati.GUI.TrayIcon
             public IList<MenuItemWrapper> Subitems { get; private set; }
             
             #region IMenuItem implementation
-            public string Text
+            public void SetText(string text)
             {
-                get { return m_text; }
-                set
+                if (this.Text != text)
                 {
-                    if (m_text != value)
-                    {
-                        m_text = value;
-                        m_parent.UpdateMenu(this);
-                    }
+                    this.Text = text;
+                    m_parent.UpdateMenu(this);
                 }
             }
-            public MenuIcons Icon
+
+            public void SetIcon(MenuIcons icon)
             {
-                get { return m_icon; }
-                set
+                if (this.Icon != icon)
                 {
-                    if (m_icon != value)
-                    {
-                        m_icon = value;
-                        m_parent.UpdateMenu(this);
-                    }
+                    this.Icon = icon;
+                    m_parent.UpdateMenu(this);
                 }
             }
-            public bool Enabled
+
+            public void SetDefault(bool isDefault)
             {
-                get { return m_enabled; }
-                set
+                if (this.Default != isDefault)
                 {
-                    if (m_enabled != value)
-                    {
-                        m_enabled = value;
-                        m_parent.UpdateMenu(this);
-                    }
-                }
-            }
-            public bool Default
-            {
-                get { return m_default; }
-                set
-                {
-                    if (m_default != value)
-                    {
-                        m_default = value;
-                        m_parent.UpdateMenu(this);
-                    }
+                    this.Default = isDefault;
+                    m_parent.UpdateMenu(this);
                 }
             }
             #endregion
@@ -115,7 +94,7 @@ namespace Duplicati.GUI.TrayIcon
         private static readonly string ICON_RUNNING = ICON_PATH + "normal-running.png";
         private static readonly string ICON_ERROR = ICON_PATH + "normal-error.png";
 
-        private Dictionary<Duplicati.GUI.TrayIcon.TrayIcons, string> m_images = new Dictionary<Duplicati.GUI.TrayIcon.TrayIcons, string>();
+        private readonly Dictionary<Duplicati.GUI.TrayIcon.TrayIcons, string> m_images = new Dictionary<Duplicati.GUI.TrayIcon.TrayIcons, string>();
 
         private System.Diagnostics.Process m_rumpsProcess;
 
@@ -130,7 +109,7 @@ namespace Duplicati.GUI.TrayIcon
 
         public static bool CanRun()
         {
-            if (!Library.Utility.Utility.IsClientOSX)
+            if (!Platform.IsClientOSX)
                 return false;
             
             if (!File.Exists(SCRIPT_PATH) || !File.Exists(RUMPS_PYTHON))
@@ -177,8 +156,10 @@ namespace Duplicati.GUI.TrayIcon
             m_toRumps = ch.AsWriteOnly();
 
             WriteChannel(m_rumpsProcess.StandardInput, ch.AsReadOnly());
+            #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
             ReadChannel(m_rumpsProcess.StandardOutput);
             ReadChannel(m_rumpsProcess.StandardError);
+            #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
 
             m_toRumps.WriteNoWait(JsonConvert.SerializeObject(new {Action = "background"}));
             //m_toRumps.WriteNoWait(JsonConvert.SerializeObject(new {Action = "setappicon", Image = GetIcon(m_lastIcon)}));
@@ -213,7 +194,7 @@ namespace Duplicati.GUI.TrayIcon
                         while(true)
                         {
                             var line = await self.Input.ReadAsync();
-                            await stream.WriteLineAsync(line);
+                            await stream.WriteLineAsync(line).ConfigureAwait(false);
                             //Console.WriteLine("Wrote {0}", line);
                         }
                     }
@@ -225,7 +206,7 @@ namespace Duplicati.GUI.TrayIcon
         {
             string line;
             using(stream)
-                while ((line = await stream.ReadLineAsync()) != null)
+                while ((line = await stream.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
                     //Console.WriteLine("Got message: {0}", line);
 
@@ -233,7 +214,7 @@ namespace Duplicati.GUI.TrayIcon
                     if (line.StartsWith("click:", StringComparison.OrdinalIgnoreCase))
                     {
                         var key = line.Substring("click:".Length);
-                        var menu = m_menus.Where(x => string.Equals(x.Key, key)).FirstOrDefault();
+                        var menu = m_menus.FirstOrDefault(x => string.Equals(x.Key, key));
                         if (menu == null)
                         {
                             Console.WriteLine("Menu not found: {0}", key);
@@ -243,7 +224,7 @@ namespace Duplicati.GUI.TrayIcon
                             menu.Callback();
                         }
                     }
-                    else if (!line.StartsWith("info") && !string.IsNullOrWhiteSpace(line))
+                    else if (!line.StartsWith("info", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(line))
                     {
                         Console.WriteLine("Unexpected message: {0}", line);
                     }
@@ -312,18 +293,9 @@ namespace Duplicati.GUI.TrayIcon
             return m_images[icon];
         }
 
-        protected override Duplicati.GUI.TrayIcon.TrayIcons Icon 
-        {
-            set 
-            {
-                m_lastIcon = value;
-                m_toRumps.WriteNoWait(JsonConvert.SerializeObject(new {Action = "seticon", Image = GetIcon(value)}));
-            }
-        }
-
         protected override Duplicati.GUI.TrayIcon.IMenuItem CreateMenuItem (string text, Duplicati.GUI.TrayIcon.MenuIcons icon, Action callback, System.Collections.Generic.IList<Duplicati.GUI.TrayIcon.IMenuItem> subitems)
         {
-            return new MenuItemWrapper(this, text, icon, callback, subitems);
+            return new MenuItemWrapper(this, text, callback, subitems);
         }
 
         protected override void Exit()
@@ -331,9 +303,9 @@ namespace Duplicati.GUI.TrayIcon
             m_isQuitting = true;
             if (m_rumpsProcess != null && !m_rumpsProcess.HasExited)
             {
-                m_toRumps.WriteNoWait(JsonConvert.SerializeObject(new {Action = "shutdown"}));
                 if (m_toRumps != null)
                 {
+                    m_toRumps.WriteNoWait(JsonConvert.SerializeObject(new { Action = "shutdown" }));
                     m_toRumps.Dispose();
                     m_toRumps = null;
                 }
@@ -343,6 +315,12 @@ namespace Duplicati.GUI.TrayIcon
                 m_rumpsProcess = null;
             }
 
+        }
+
+        protected override void SetIcon(TrayIcons icon)
+        {
+            m_lastIcon = icon;
+            m_toRumps.WriteNoWait(JsonConvert.SerializeObject(new { Action = "seticon", Image = GetIcon(icon) }));
         }
 
         protected override void SetMenu(System.Collections.Generic.IEnumerable<Duplicati.GUI.TrayIcon.IMenuItem> items)

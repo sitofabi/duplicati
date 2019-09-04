@@ -27,13 +27,15 @@ namespace Duplicati.Server
     /// </summary>
     public class UpdatePollThread
     {
-        private Thread m_thread;
+        private readonly Thread m_thread;
         private volatile bool m_terminated = false;
         private volatile bool m_download = false;
         private volatile bool m_forceCheck = false;
-        private object m_lock = new object();
-        private AutoResetEvent m_waitSignal;
+        private readonly object m_lock = new object();
+        private readonly AutoResetEvent m_waitSignal;
         private double m_downloadProgress;
+
+        public bool IsUpdateRequested { get; private set; } = false;
 
         public UpdatePollerStates ThreadState { get; private set; }
         public double DownloadProgess
@@ -81,7 +83,10 @@ namespace Duplicati.Server
         public void ActivateUpdate()
         {
             if (Duplicati.Library.AutoUpdater.UpdaterManager.SetRunUpdate())
+            {
+                IsUpdateRequested = true;
                 Program.ApplicationExitEvent.Set();
+            }
         }
 
         public void Terminate()
@@ -106,6 +111,20 @@ namespace Duplicati.Server
             while (!m_terminated)
             {
                 var nextCheck = Program.DataConnection.ApplicationSettings.NextUpdateCheck;
+
+                var maxcheck = TimeSpan.FromDays(7);
+                try
+                {
+                    maxcheck = Library.Utility.Timeparser.ParseTimeSpan(Program.DataConnection.ApplicationSettings.UpdateCheckInterval);
+                }
+                catch
+                {
+                }
+
+                // If we have some weirdness, just check now
+                if (nextCheck - DateTime.UtcNow > maxcheck)
+                    nextCheck = DateTime.UtcNow - TimeSpan.FromSeconds(1);
+
                 if (nextCheck < DateTime.UtcNow || m_forceCheck)
                 {
                     lock(m_lock)
@@ -164,8 +183,11 @@ namespace Duplicati.Server
                                     null,
                                     null,
                                     "update:new",
+                                    null,
+                                    "NewUpdateFound",
+                                    null,
                                     (self, all) => {
-                                        return all.Where(x => x.Action == "update:new").FirstOrDefault() ?? self;
+                                        return all.FirstOrDefault(x => x.Action == "update:new") ?? self;
                                     }
                                 );
                     }
@@ -196,8 +218,16 @@ namespace Duplicati.Server
                 }
 
                 var waitTime = nextCheck - DateTime.UtcNow;
+
+                // Guard against spin-loop
                 if (waitTime.TotalSeconds < 5)
                     waitTime = TimeSpan.FromSeconds(5);
+                
+                // Guard against year-long waits
+                // A re-check does not cause an update check
+                if (waitTime.TotalDays > 1)
+                    waitTime = TimeSpan.FromDays(1);
+                
                 m_waitSignal.WaitOne(waitTime, true);
             }   
         }

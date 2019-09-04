@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -9,13 +9,12 @@
     <RootNamespace>Duplicati.Library.Interface</RootNamespace>
     <AssemblyName>Duplicati.Library.Interface</AssemblyName>
     <FileAlignment>512</FileAlignment>
-    <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>Duplicati.snk</AssemblyOriginatorKeyFile>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
     <OldToolsVersion>3.5</OldToolsVersion>
     <UpgradeBackupLocation />
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>
     <TargetFrameworkProfile />
     <UseMSBuildEngine>false</UseMSBuildEngine>
   </PropertyGroup>
@@ -42,11 +41,12 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BackendExtensions.cs" />
     <Compile Include="CommandLineArgument.cs" />
     <Compile Include="CommonStrings.cs" />
     <Compile Include="CustomExceptions.cs" />
-    <Compile Include="FileEntry.cs" />
     <Compile Include="IBackend.cs" />
+    <Compile Include="USNJournalDataEntry.cs" />
     <Compile Include="ICommandLineArgument.cs" />
     <Compile Include="IEncryption.cs" />
     <Compile Include="ICompression.cs" />
@@ -54,14 +54,17 @@
     <Compile Include="IGenericSourceModule.cs" />
     <Compile Include="IGenericModule.cs" />
     <Compile Include="IQuotaEnabledBackend.cs" />
+    <Compile Include="IQuotaInfo.cs" />
     <Compile Include="IStreamingBackend.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="IGenericCallbackModule.cs" />
+    <Compile Include="QuotaInfo.cs" />
     <Compile Include="ResultInterfaces.cs" />
     <Compile Include="IWebModule.cs" />
     <Compile Include="IConnectionModule.cs" />
     <Compile Include="IRenameEnabledBackend.cs" />
     <Compile Include="Strings.cs" />
+    <Compile Include="IGenericServerModule.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Duplicati.snk" />

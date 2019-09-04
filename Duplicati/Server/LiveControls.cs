@@ -1,4 +1,4 @@
-#region Disclaimer / License
+﻿#region Disclaimer / License
 // Copyright (C) 2015, The Duplicati Team
 // http://www.duplicati.com, info@duplicati.com
 // 
@@ -20,6 +20,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Duplicati.Library.Common;
 
 namespace Duplicati.Server
 {
@@ -29,6 +30,11 @@ namespace Duplicati.Server
     /// </summary>
     public class LiveControls
     {
+        /// <summary>
+        /// The tag used for logging
+        /// </summary>
+        private static readonly string LOGTAG = Duplicati.Library.Logging.Log.LogTagFromType<LiveControls>();
+
         /// <summary>
         /// An event that is activated when the pause state changes
         /// </summary>
@@ -97,7 +103,7 @@ namespace Duplicati.Server
         /// <summary>
         /// The object that ensures concurrent operations
         /// </summary>
-        private object m_lock = new object();
+        private readonly object m_lock = new object();
 
         /// <summary>
         /// Gets the current overridden thread priority
@@ -153,7 +159,7 @@ namespace Duplicati.Server
         /// <summary>
         /// The timer that is activated after a pause period.
         /// </summary>
-        private System.Threading.Timer m_waitTimer;
+        private readonly System.Threading.Timer m_waitTimer;
 
         /// <summary>
         /// The time that the current pause is expected to expire
@@ -163,7 +169,6 @@ namespace Duplicati.Server
         /// <summary>
         /// Constructs a new instance of the LiveControl
         /// </summary>
-        /// <param name="initialTimeout">The duration that the backups should be initially suspended</param>
         public LiveControls(Database.ServerSettings settings)
         {
             m_state = LiveControlState.Running;
@@ -185,13 +190,28 @@ namespace Duplicati.Server
 
             m_priority = settings.ThreadPriorityOverride;
             if (!string.IsNullOrEmpty(settings.DownloadSpeedLimit))
-                m_downloadLimit = Library.Utility.Sizeparser.ParseSize(settings.DownloadSpeedLimit, "kb");
+                try
+                {
+                    m_downloadLimit = Library.Utility.Sizeparser.ParseSize(settings.DownloadSpeedLimit, "kb");
+                }
+                catch (Exception ex)
+                {
+                    Library.Logging.Log.WriteErrorMessage(LOGTAG, "ParseDownloadLimitError", ex, "Failed to parse download limit: {0}", settings.DownloadSpeedLimit);
+                }
+
             if (!string.IsNullOrEmpty(settings.UploadSpeedLimit))
-                m_uploadLimit = Library.Utility.Sizeparser.ParseSize(settings.UploadSpeedLimit, "kb");
+                try
+                {
+                    m_uploadLimit = Library.Utility.Sizeparser.ParseSize(settings.UploadSpeedLimit, "kb");
+                }
+                catch (Exception ex)
+                {
+                    Library.Logging.Log.WriteErrorMessage(LOGTAG, "ParseUploadLimitError", ex, "Failed to parse upload limit: {0}", settings.UploadSpeedLimit);
+                }
 
             try
             {
-                if (!Library.Utility.Utility.IsClientLinux)
+                if (!Platform.IsClientPosix)
                     RegisterHibernateMonitor();
             }
             catch { }
@@ -201,7 +221,6 @@ namespace Duplicati.Server
         /// Event that occurs when the timeout duration is exceeded
         /// </summary>
         /// <param name="sender">The sender of the event</param>
-        /// <param name="e">An unused event argument</param>
         private void  m_waitTimer_Tick(object sender)
         {
             lock (m_lock)
@@ -320,14 +339,6 @@ namespace Duplicati.Server
         private void RegisterHibernateMonitor()
         {
             Microsoft.Win32.SystemEvents.PowerModeChanged += new Microsoft.Win32.PowerModeChangedEventHandler(SystemEvents_PowerModeChanged);
-        }
-
-        /// <summary>
-        /// Method for calling a Win32 API
-        /// </summary>
-        private void UnregisterHibernateMonitor()
-        {
-            Microsoft.Win32.SystemEvents.PowerModeChanged -= new Microsoft.Win32.PowerModeChangedEventHandler(SystemEvents_PowerModeChanged);
         }
 
         /// <summary>

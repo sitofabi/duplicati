@@ -42,6 +42,7 @@ Patch1:	%{namer}-0001-remove-unittest.patch
 BuildRequires:  mono-devel gnome-sharp-devel
 BuildRequires:  desktop-file-utils
 BuildRequires:  dos2unix
+BuildRequires:  systemd
 
 Requires:	desktop-file-utils
 Requires:	bash
@@ -115,12 +116,14 @@ find -type f -name "*dll" -or -name "*DLL" -or -name "*exe"
 
 %build
 
+nuget restore Duplicati.sln
+
 xbuild /property:Configuration=Release BuildTools/UpdateVersionStamp/UpdateVersionStamp.csproj
 mono BuildTools/UpdateVersionStamp/bin/Release/UpdateVersionStamp.exe --version=%{_buildversion}
 
 xbuild /property:Configuration=Release thirdparty/UnixSupport/UnixSupport.csproj
 cp thirdparty/UnixSupport/bin/Release/UnixSupport.dll thirdparty/UnixSupport/UnixSupport.dll
-nuget restore Duplicati.sln
+
 xbuild /property:Configuration=Release Duplicati.sln
 
 # xbuild BuildTools/LocalizationTool/LocalizationTool.sln
@@ -193,21 +196,31 @@ if [ -f "oem-update-installid.txt" ]; then install -p -m 644 "oem-update-install
 desktop-file-install Installer/debian/%{namer}.desktop 
 
 mv Tools/Verification/DuplicatiVerify.py Tools/
-rmdir Tools/Verification/
+rm -rf Tools/Verification/
 mv Duplicati/Library/Snapshots/lvm-scripts/remove-lvm-snapshot.sh Tools/
 mv Duplicati/Library/Snapshots/lvm-scripts/create-lvm-snapshot.sh Tools/
 mv Duplicati/Library/Snapshots/lvm-scripts/find-volume.sh Tools/
 mv Duplicati/Library/Modules/Builtin/run-script-example.sh Tools/
 
+# Install the service:
+install -p -D -m 755 Installer/fedora/%{namer}.service %{_unitdir}
+install -p -D -m 644 Installer/fedora/%{namer}.default %{_sysconfdir}/sysconfig/
+
+
 %post
 /bin/touch --no-create %{_datadir}/icons/hicolor || :
 %{_bindir}/gtk-update-icon-cache \
   --quiet %{_datadir}/icons/hicolor 2> /dev/null|| :
+%systemd_post %{namer}.service
+
+%preun
+%systemd_preun %{namer}.service
 
 %postun
 /bin/touch --no-create %{_datadir}/icons/hicolor || :
 %{_bindir}/gtk-update-icon-cache \
   --quiet %{_datadir}/icons/hicolor 2> /dev/null|| :
+%systemd_postun_with_restart %{namer}.service
 
 %posttrans
 /usr/bin/gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
@@ -221,6 +234,12 @@ mv Duplicati/Library/Modules/Builtin/run-script-example.sh Tools/
 
 
 %changelog
+* Wed Jun 21 2017 Kenneth Skovhede <kenneth@duplicati.com> - 2.0.0-0.20170621.git
+- Added the service file to the install
+
+* Fri Jan 13 2017 Kenneth Skovhede <kenneth@duplicati.com> - 2.0.0-0.20170113.git
+- Fixed NuGet restore
+
 * Sat Apr 23 2016 Kenneth Skovhede <kenneth@duplicati.com> - 2.0.0-0.20160423.git
 - Updated list of dependencies
 

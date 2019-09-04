@@ -9,13 +9,19 @@ using System.Threading.Tasks;
 
 namespace Duplicati.WindowsService
 {
-    class Program
+    public class Program
     {
-        public static void Main(string[] args)
+        [STAThread]
+        public static int Main(string[] args)
         {
-            var install = args != null && args.Where(x => string.Equals("install", x, StringComparison.OrdinalIgnoreCase)).Any();
-            var uninstall = args != null && args.Where(x => string.Equals("uninstall", x, StringComparison.OrdinalIgnoreCase)).Any();
-            var help = args != null && args.Where(x => string.Equals("help", x, StringComparison.OrdinalIgnoreCase)).Any();
+            return Duplicati.Library.AutoUpdater.UpdaterManager.RunFromMostRecent(typeof(Program).GetMethod("RealMain"), args, Duplicati.Library.AutoUpdater.AutoUpdateStrategy.Never);
+        }
+
+        public static void RealMain(string[] args)
+        {
+            var install = args != null && args.Any(x => string.Equals("install", x, StringComparison.OrdinalIgnoreCase));
+            var uninstall = args != null && args.Any(x => string.Equals("uninstall", x, StringComparison.OrdinalIgnoreCase));
+            var help = args != null && args.Any(x => string.Equals("help", x, StringComparison.OrdinalIgnoreCase));
 
             if (help)
             {
@@ -41,7 +47,7 @@ namespace Duplicati.WindowsService
             else if (install || uninstall)
             {
                 // Remove the install and uninstall flags if they are present
-                var commandline = string.Join(" ", args.Where(x => !(string.Equals("install", x, StringComparison.OrdinalIgnoreCase) || string.Equals("uninstall", x, StringComparison.OrdinalIgnoreCase))));
+                var commandline = Library.Utility.Utility.WrapAsCommandLine(args.Where(x => !(string.Equals("install", x, StringComparison.OrdinalIgnoreCase) || string.Equals("uninstall", x, StringComparison.OrdinalIgnoreCase))));
                 var selfexec = Assembly.GetExecutingAssembly().Location;
 
 

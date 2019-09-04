@@ -1,25 +1,24 @@
-#region Disclaimer / License
+﻿#region Disclaimer / License
 // Copyright (C) 2015, The Duplicati Team
 // http://www.duplicati.com, info@duplicati.com
-// 
+//
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
 // License as published by the Free Software Foundation; either
 // version 2.1 of the License, or (at your option) any later version.
-// 
+//
 // This library is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 // Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
-// 
+//
 #endregion
 using System;
-using System.Collections.Generic;
-using System.Text;
+using Duplicati.Library.Common.IO;
 
 namespace Duplicati.Library.Utility
 {
@@ -39,7 +38,7 @@ namespace Duplicati.Library.Utility
         public TempFolder(string folder)
         {
             m_protect = false;
-            m_folder = Utility.AppendDirSeparator(folder);
+            m_folder = Util.AppendDirSeparator(folder);
             System.IO.Directory.CreateDirectory(m_folder);
         }
 
@@ -73,14 +72,12 @@ namespace Duplicati.Library.Utility
                     System.IO.Directory.Delete(m_folder, true);
                 m_folder = null;
             }
-            catch 
+            catch
             {
             }
         }
 
         #endregion
-
-        private static string m_system_temp_dir = null;
 
         /// <summary>
         /// Gets or sets the global temporary path used to store temporary files.
@@ -88,30 +85,14 @@ namespace Duplicati.Library.Utility
         /// </summary>
         public static string SystemTempPath
         {
-            get { return m_system_temp_dir == null ? System.IO.Path.GetTempPath() : m_system_temp_dir; }
-            set 
+            get {
+                return SystemContextSettings.Tempdir;
+            }
+            set
             {
                 if (!System.IO.Directory.Exists(value))
                     throw new Exception(Strings.TempFolder.TempFolderDoesNotExistError(value));
-                m_system_temp_dir = value; 
-            }
-        }
-
-        /// <summary>
-        /// Sets the system temp path.
-        /// </summary>
-        /// <param name="path">Path.</param>
-        public static void SetSystemTempPath(string path)
-        {
-            SystemTempPath = path;
-            if (Utility.IsClientLinux)
-            {
-                Environment.SetEnvironmentVariable("TMPDIR", path);
-            }
-            else
-            {
-                Environment.SetEnvironmentVariable("TMP", path);
-                Environment.SetEnvironmentVariable("TEMP", path);
+                SystemContextSettings.Tempdir = value;
             }
         }
     }

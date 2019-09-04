@@ -1,18 +1,19 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{19E661D2-C5DA-4F35-B3EE-7586E5734B5F}</ProjectGuid>
     <OutputType>Exe</OutputType>
+    <Prefer32Bit>False</Prefer32Bit>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Duplicati.Server</RootNamespace>
     <AssemblyName>Duplicati.Server</AssemblyName>
     <FileAlignment>512</FileAlignment>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.2</TargetFrameworkVersion>
     <TargetFrameworkProfile />
-    <SignAssembly>false</SignAssembly>
     <UseMSBuildEngine>false</UseMSBuildEngine>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
     <DebugSymbols>true</DebugSymbols>
@@ -43,7 +44,16 @@
   <PropertyGroup>
     <AssemblyOriginatorKeyFile>Duplicati.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
   <ItemGroup>
+    <Reference Include="BouncyCastle.Crypto, Version=1.8.5.0, Culture=neutral, PublicKeyToken=0e99375e54769942">
+      <HintPath>..\..\packages\BouncyCastle.1.8.5\lib\BouncyCastle.Crypto.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\..\packages\Newtonsoft.Json.12.0.2\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="UnixSupport">
@@ -53,9 +63,6 @@
       <HintPath>..\..\thirdparty\HttpServer\HttpServer.dll</HintPath>
     </Reference>
     <Reference Include="System.Data" />
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>..\..\packages\Newtonsoft.Json.9.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
     <Reference Include="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
@@ -82,7 +89,6 @@
     <Compile Include="WebServer\Server.cs" />
     <Compile Include="WebServer\BodyWriter.cs" />
     <Compile Include="WebServer\IndexHtmlHandler.cs" />
-    <Compile Include="WebServer\ControlHandler.cs" />
     <Compile Include="UpdatePollThread.cs" />
     <Compile Include="LogWriteHandler.cs" />
     <Compile Include="Database\Notification.cs" />
@@ -120,9 +126,12 @@
     <Compile Include="WebServer\RESTMethods\Licenses.cs" />
     <Compile Include="WebServer\CaptchaUtil.cs" />
     <Compile Include="WebServer\RESTMethods\Captcha.cs" />
+    <Compile Include="WebServer\RESTMethods\CommandLine.cs" />
+    <Compile Include="WebServer\SynologyAuthenticationHandler.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
+    <None Include="app.manifest" />
     <None Include="Duplicati.snk" />
     <EmbeddedResource Include="newbackup.json" />
     <EmbeddedResource Include="Database\Database schema\Schema.sql" />
@@ -130,6 +139,7 @@
     <EmbeddedResource Include="Database\Database schema\2. Add UIStorage.sql" />
     <EmbeddedResource Include="Database\Database schema\3. Add temp file storage.sql" />
     <EmbeddedResource Include="Database\Database schema\4. Add autoincrement to backup id.sql" />
+    <EmbeddedResource Include="Database\Database schema\5. Extend notification table.sql" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
@@ -161,9 +171,17 @@
       <Project>{F61679A9-E5DE-468A-B5A4-05F92D0143D2}</Project>
       <Name>Duplicati.Library.Backend.FTP</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Library\Backend\Jottacloud\Duplicati.Library.Backend.Jottacloud.csproj">
+      <Project>{2cd5dbc3-3da6-432d-ba97-f0b8d24501c2}</Project>
+      <Name>Duplicati.Library.Backend.Jottacloud</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Library\Backend\OAuthHelper\Duplicati.Library.OAuthHelper.csproj">
       <Project>{d4c37c33-5e73-4b56-b2c3-dc4a6baa36bb}</Project>
       <Name>Duplicati.Library.OAuthHelper</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Library\Backend\Rclone\Duplicati.Library.Backend.Rclone.csproj">
+      <Project>{851a1cb8-3ceb-41b4-956f-34d760d2a8e5}</Project>
+      <Name>Duplicati.Library.Backend.Rclone</Name>
     </ProjectReference>
     <ProjectReference Include="..\Library\Backend\S3\Duplicati.Library.Backend.S3.csproj">
       <Project>{C03F6DFD-805A-4BE0-9338-64870ADDB4A2}</Project>
@@ -172,6 +190,10 @@
     <ProjectReference Include="..\Library\Backend\SharePoint\Duplicati.Library.Backend.SharePoint.csproj">
       <Project>{59C8BBC5-6E42-46FB-AB3E-6C183A82459A}</Project>
       <Name>Duplicati.Library.Backend.SharePoint</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Library\Backend\Sia\Duplicati.Library.Backend.Sia.csproj">
+      <Project>{32a74526-3e5f-413a-8cb4-1efdad4c8b91}</Project>
+      <Name>Duplicati.Library.Backend.Sia</Name>
     </ProjectReference>
     <ProjectReference Include="..\Library\Backend\SSHv2\Duplicati.Library.Backend.SSHv2.csproj">
       <Project>{FF2BF37C-E502-4C98-BEA0-701671DDFA08}</Project>
@@ -194,7 +216,7 @@
       <Name>Duplicati.Library.DynamicLoader</Name>
     </ProjectReference>
     <ProjectReference Include="..\Library\Encryption\Duplicati.Library.Encryption.csproj">
-      <Project>{94484FDB-2EFA-4CF0-9BE6-A561157B4F87}</Project>
+      <Project>{2cf2d90e-c25b-47ad-91e0-98451bab8058}</Project>
       <Name>Duplicati.Library.Encryption</Name>
     </ProjectReference>
     <ProjectReference Include="..\Library\Interface\Duplicati.Library.Interface.csproj">
@@ -297,9 +319,16 @@
       <Project>{0797AA22-C5DD-4950-BB60-34765AB8C6DD}</Project>
       <Name>Duplicati.Tools</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Library\Common\Duplicati.Library.Common.csproj">
+      <Project>{D63E53E4-A458-4C2F-914D-92F715F58ACF}</Project>
+      <Name>Duplicati.Library.Common</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="webroot\" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Database\Database schema\6. Add Description to Backup.sql" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

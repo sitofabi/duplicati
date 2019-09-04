@@ -22,21 +22,11 @@ namespace Duplicati.UnitTest
 {
 	public class Issue1723 : BasicSetupHelper
 	{
-        [OneTimeSetUp]
-		public override void PrepareSourceData()
-		{
-			base.PrepareSourceData();
-
-			Directory.CreateDirectory(DATAFOLDER);
-			Directory.CreateDirectory(TARGETFOLDER);
-		}
-
 		[Test]
         [Category("Targeted")]
 		public void RunCommands()
 		{
 			var testopts = TestOptions;
-			testopts["verbose"] = "true";
 			testopts["no-backend-verification"] = "true";
 
 			var data = new byte[1024 * 1024 * 10];

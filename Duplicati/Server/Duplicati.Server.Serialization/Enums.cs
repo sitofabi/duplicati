@@ -49,7 +49,9 @@ namespace Duplicati.Server.Serialization
         Compact,
         CreateReport,
         ListRemote,
-        Delete
+        Delete,
+        Vacuum,
+        CustomRunner,
     }
 
     public enum SuggestedStatusIcon

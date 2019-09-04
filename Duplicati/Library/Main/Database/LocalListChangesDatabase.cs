@@ -89,7 +89,7 @@ namespace Duplicati.Library.Main.Database
         
         private class StorageHelper : IStorageHelper
         {
-            private System.Data.IDbConnection m_connection;
+            private readonly System.Data.IDbConnection m_connection;
             private System.Data.IDbTransaction m_transaction;
             
             private System.Data.IDbCommand m_insertPreviousElementCommand;
@@ -173,7 +173,7 @@ namespace Duplicati.Library.Main.Database
                             cmd2.AddParameters(5);
                             cmd2.Transaction = m_transaction;
     
-                            using(var rd = cmd.ExecuteReader(@"SELECT ""Path"", ""FileHash"", ""MetaHash"", ""Size"", ""Type"" FROM {1} A WHERE ""A"".""FilesetID"" = ?", filesetId))
+                            using(var rd = cmd.ExecuteReader(string.Format(@"SELECT ""A"".""Path"", ""A"".""FileHash"", ""A"".""MetaHash"", ""A"".""Size"", ""A"".""Type"" FROM {0} A WHERE ""A"".""FilesetID"" = ?", combined), filesetId))
                                 while (rd.Read())
                                 {
                                     rd.GetValues(values);

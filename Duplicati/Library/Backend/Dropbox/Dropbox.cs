@@ -1,31 +1,40 @@
-﻿using System;
+﻿using Duplicati.Library.Common.IO;
+using Duplicati.Library.Interface;
+using System;
 using System.Collections.Generic;
 using System.IO;
-using Duplicati.Library.Interface;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Duplicati.Library.Backend
 {
+    // ReSharper disable once UnusedMember.Global
+    // This class is instantiated dynamically in the BackendLoader.
     public class Dropbox : IBackend, IStreamingBackend
     {
         private const string AUTHID_OPTION = "authid";
-        private const int MAX_FILE_LIST = 10000;
 
-        private string m_path,m_accesToken;
-        private DropboxHelper dbx;
+        private readonly string m_accesToken;
+        private readonly string m_path;
+        private readonly DropboxHelper dbx;
 
+        // ReSharper disable once UnusedMember.Global
+        // This constructor is needed by the BackendLoader.
         public Dropbox()
         {
         }
 
+        // ReSharper disable once UnusedMember.Global
+        // This constructor is needed by the BackendLoader.
         public Dropbox(string url, Dictionary<string, string> options)
         {
             var uri = new Utility.Uri(url);
 
             m_path = Library.Utility.Uri.UrlDecode(uri.HostAndPath);
-            if (m_path.Length != 0 && !m_path.StartsWith("/"))
+            if (m_path.Length != 0 && !m_path.StartsWith("/", StringComparison.Ordinal))
                 m_path = "/" + m_path;
 
-            if (m_path.EndsWith("/"))
+            if (m_path.EndsWith("/", StringComparison.Ordinal))
                 m_path = m_path.Substring(0, m_path.Length - 1);
 
             if (options.ContainsKey(AUTHID_OPTION))
@@ -49,7 +58,7 @@ namespace Duplicati.Library.Backend
             get { return "dropbox"; }
         }
 
-        private FileEntry ParseEntry(MetaData md)
+        private IFileEntry ParseEntry(MetaData md)
         {
             var ife = new FileEntry(md.name);
             if (md.IsFile)
@@ -68,43 +77,45 @@ namespace Duplicati.Library.Backend
             return ife;
         }
 
-        public List<IFileEntry> List()
+        private T HandleListExceptions<T>(Func<T> func)
         {
             try
             {
-                var list = new List<IFileEntry>();
-                var lfr = dbx.ListFiles(m_path);
-              
-                foreach (var md in lfr.entries)
-                    list.Add(ParseEntry(md));
-
-                while (lfr.has_more)
-                {
-                    lfr = dbx.ListFilesContinue(lfr.cursor);
-                    foreach (var md in lfr.entries)
-                        list.Add(ParseEntry(md));
-                }
-
-                return list;
+                return func();
             }
             catch (DropboxException de)
             {
                 if (de.errorJSON["error"][".tag"].ToString() == "path" && de.errorJSON["error"]["path"][".tag"].ToString() == "not_found")
                     throw new FolderMissingException();
-                
+
                 throw;
             }
         }
 
-        public void Put(string remotename, string filename)
+        public IEnumerable<IFileEntry> List()
         {
-            using(FileStream fs = System.IO.File.OpenRead(filename))
-                Put(remotename,fs);
+            var lfr = HandleListExceptions(() => dbx.ListFiles(m_path));
+              
+            foreach (var md in lfr.entries)
+                yield return ParseEntry(md);
+
+            while (lfr.has_more)
+            {
+                lfr = HandleListExceptions(() => dbx.ListFilesContinue(lfr.cursor));
+                foreach (var md in lfr.entries)
+                    yield return ParseEntry(md);
+            }
+        }
+
+        public Task PutAsync(string remotename, string filename, CancellationToken cancelToken)
+        {
+            using(FileStream fs = File.OpenRead(filename))
+                return PutAsync(remotename, fs, cancelToken);
         }
 
         public void Get(string remotename, string filename)
         {
-            using(FileStream fs = System.IO.File.Create(filename))
+            using(FileStream fs = File.Create(filename))
                 Get(remotename, fs);
         }
 
@@ -115,7 +126,7 @@ namespace Duplicati.Library.Backend
                 string path = String.Format("{0}/{1}", m_path, remotename);
                 dbx.Delete(path);
             }
-            catch (DropboxException de)
+            catch (DropboxException)
             {
                 // we can catch some events here and convert them to Duplicati exceptions
                 throw;
@@ -134,9 +145,14 @@ namespace Duplicati.Library.Backend
 
         public string Description { get { return Strings.Dropbox.Description; } }
 
+        public string[] DNSName
+        {
+            get { return WebApi.Dropbox.Hosts(); }
+        }
+
         public void Test()
         {
-            List();
+            this.TestList();
         }
 
         public void CreateFolder()
@@ -154,14 +170,14 @@ namespace Duplicati.Library.Backend
             }
         }
 
-        public void Put(string remotename, Stream stream)
+        public async Task PutAsync(string remotename, Stream stream, CancellationToken cancelToken)
         {
             try
             {
-                string path = string.Format("{0}/{1}", m_path, remotename);
-                dbx.UploadFile(path, stream);
+                string path = $"{m_path}/{remotename}";
+                await dbx.UploadFileAsync(path, stream, cancelToken);
             }
-            catch (DropboxException de)
+            catch (DropboxException)
             {
                 // we can catch some events here and convert them to Duplicati exceptions
                 throw;
@@ -175,7 +191,7 @@ namespace Duplicati.Library.Backend
                 string path = string.Format("{0}/{1}", m_path, remotename);
                 dbx.DownloadFile(path, stream);
             }
-            catch (DropboxException de)
+            catch (DropboxException)
             {
                 // we can catch some events here and convert them to Duplicati exceptions
                 throw;

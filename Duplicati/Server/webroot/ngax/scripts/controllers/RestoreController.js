@@ -1,4 +1,4 @@
-backupApp.controller('RestoreController', function ($rootScope, $scope, $routeParams, $location, AppService, AppUtils, SystemInfo, ServerStatus, DialogService, gettextCatalog) {
+backupApp.controller('RestoreController', function ($rootScope, $scope, $routeParams, $location, AppService, AppUtils, SystemInfo, ServerStatus, DialogService, BackupList, gettextCatalog) {
 
     $scope.SystemInfo = SystemInfo.watch($scope);
     $scope.AppUtils = AppUtils;
@@ -8,6 +8,7 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
     $scope.HideFolderBrowser = true;
     $scope.RestoreLocation = 'direct';
     $scope.RestoreMode = 'overwrite';
+    $scope.passphrase = "";
 
     var filesetsBuilt = {};
     var filesetsRepaired = {};
@@ -21,7 +22,7 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
 
     function createGroupLabel(dt) {
         var dateStamp = function(a) { return a.getFullYear() * 10000 + a.getMonth() * 100 + a.getDate(); }
-        
+
         var now       = new Date();
         var today     = dateStamp(now);
         var yesterday = dateStamp(new Date(new Date().setDate(now.getDate()   - 1)));
@@ -30,7 +31,7 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
         var lastmonth = dateStamp(new Date(new Date().setMonth(now.getMonth() - 2)));
 
         var dateBuckets = [
-            {text: gettextCatalog.getString('Today'), stamp: today}, 
+            {text: gettextCatalog.getString('Today'), stamp: today},
             {text: gettextCatalog.getString('Yesterday'), stamp: yesterday},
             {text: gettextCatalog.getString('This week'), stamp: week},
             {text: gettextCatalog.getString('This month'), stamp: thismonth},
@@ -227,7 +228,7 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
                 function compareablePath(path) {
                     return $scope.SystemInfo.CaseSensitiveFilesystem ? path : path.toLowerCase();
                 };
-    
+
                 for(var i in filesetsBuilt[version])
                     searchNodes[i] = { Path: filesetsBuilt[version][i].Path };
 
@@ -256,7 +257,7 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
                                 for(var m in col.Children) {
                                     if (compareablePath(col.Children[m].Path) == compareablePath(curpath)) {
                                         found = true;
-                                        col = col.Children[m];                                    
+                                        col = col.Children[m];
                                     }
                                 }
 
@@ -318,11 +319,14 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
         var version = $scope.RestoreVersion + '';
         var stamp = filesetStamps[version];
 
+        $scope.restore_step = 2;
+
         function handleError(resp) {
             var message = resp.statusText;
             if (resp.data != null && resp.data.Message != null)
                 message = resp.data.Message;
 
+            $scope.restore_step = 1;
             $scope.connecting = false;
             $scope.ConnectionProgress = '';
             DialogService.dialog(gettextCatalog.getString('Error'), gettextCatalog.getString('Failed to connect: {{message}}', { message: message }));
@@ -332,7 +336,8 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
             'time': stamp,
             'restore-path': $scope.RestoreLocation == 'custom' ? $scope.RestorePath : null,
             'overwrite': $scope.RestoreMode == 'overwrite',
-            'permissions': $scope.RestorePermissions == null ? false : $scope.RestorePermissions
+            'permissions': $scope.RestorePermissions == null ? false : $scope.RestorePermissions,
+            'passphrase' : $scope.passphrase
         };
 
         var paths = [];
@@ -375,6 +380,7 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
                                 DialogService.dialog(gettextCatalog.getString('Error'), gettextCatalog.getString('Failed to build temporary database: {{message}}', { message: resp.data.ErrorMessage }));
                                 $scope.connecting = false;
                                 $scope.ConnectionProgress = '';
+                                $scope.restore_step = 1;
                             }
                         }, handleError);
                     });
@@ -400,7 +406,7 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
 
             if (resp.data.Status == 'Completed')
             {
-                $scope.restore_step = 2;
+                $scope.restore_step = 3;
             }
             else
             {
@@ -411,6 +417,7 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
             if (resp.data != null && resp.data.Message != null)
                 message = resp.data.Message;
 
+            $scope.restore_step = 1;
             $scope.connecting = false;
             $scope.ConnectionProgress = '';
             DialogService.dialog(gettextCatalog.getString('Error'), gettextCatalog.getString('Failed to connect: {{message}}', { message: message }));
@@ -419,10 +426,32 @@ backupApp.controller('RestoreController', function ($rootScope, $scope, $routePa
 
     $scope.onClickComplete = function () {
         $location.path('/');
+    };
+
+    $scope.trySetStep = function(pg) {
+        if ($scope.restore_step < 2)
+            $scope.restore_step = pg;
+    };
+
+    $scope.showInputPassphrase = function () {
+        if (!this.Backup) {
+            return false;
+        }
+
+        if (!'IsUnencryptedOrPassphraseStored' in this.Backup) {
+            return false;
+        }
+
+        return !this.Backup['IsUnencryptedOrPassphraseStored'];
     }
 
     $scope.BackupID = $routeParams.backupid;
     $scope.IsBackupTemporary = parseInt($scope.BackupID) != $scope.BackupID;
+
+    if (!$scope.IsBackupTemporary) {
+        $scope.$on('backuplistchanged', function() { $scope.Backup = BackupList.lookup[$scope.BackupID]; });
+        $scope.Backup = BackupList.lookup[$scope.BackupID];
+    }
 
     // We pass in the filelist through a global variable
     // ... bit ugly, but we do not want to do two remote queries,

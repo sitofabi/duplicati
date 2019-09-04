@@ -1,4 +1,4 @@
-#region Disclaimer / License
+﻿#region Disclaimer / License
 // Copyright (C) 2015, The Duplicati Team
 // http://www.duplicati.com, info@duplicati.com
 // 
@@ -17,26 +17,29 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 // 
 #endregion
+using Duplicati.Library.Common.IO;
+using Duplicati.Library.Interface;
 using System;
 using System.Collections.Generic;
-using System.Text;
-using Duplicati.Library.Interface;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Duplicati.Library.Backend
 {
     public class WEBDAV : IBackend, IStreamingBackend
     {
-        private System.Net.NetworkCredential m_userInfo;
-        private string m_url;
-        private string m_path;
-        private string m_sanitizedUrl;
-        private string m_reverseProtocolUrl;
-        private string m_rawurl;
-        private string m_rawurlPort;
-        private bool m_useIntegratedAuthentication = false;
-        private bool m_forceDigestAuthentication = false;
-        private bool m_useSSL = false;
-        private string m_debugPropfindFile = null;
+        private readonly System.Net.NetworkCredential m_userInfo;
+        private readonly string m_url;
+        private readonly string m_path;
+        private readonly string m_sanitizedUrl;
+        private readonly string m_reverseProtocolUrl;
+        private readonly string m_rawurl;
+        private readonly string m_rawurlPort;
+        private readonly string m_dnsName;
+        private readonly bool m_useIntegratedAuthentication = false;
+        private readonly bool m_forceDigestAuthentication = false;
+        private readonly bool m_useSSL = false;
+        private readonly string m_debugPropfindFile = null;
         private readonly byte[] m_copybuffer = new byte[Duplicati.Library.Utility.Utility.DEFAULT_BUFFER_SIZE];
 
         /// <summary>
@@ -61,6 +64,7 @@ namespace Duplicati.Library.Backend
         {
             var u = new Utility.Uri(url);
             u.RequireHost();
+            m_dnsName = u.Host;
 
             if (!string.IsNullOrEmpty(u.Username))
             {
@@ -91,14 +95,12 @@ namespace Duplicati.Library.Backend
             m_useSSL = Utility.Utility.ParseBoolOption(options, "use-ssl");
 
             m_url = u.SetScheme(m_useSSL ? "https" : "http").SetCredentials(null, null).SetQuery(null).ToString();
-            if (!m_url.EndsWith("/"))
-                m_url += "/";
+            m_url = Util.AppendDirSeparator(m_url, "/");
 
             m_path = u.Path;
-            if (!m_path.StartsWith("/"))
+            if (!m_path.StartsWith("/", StringComparison.Ordinal))
                 m_path = "/" + m_path;
-            if (!m_path.EndsWith("/"))
-                m_path += "/";
+            m_path = Util.AppendDirSeparator(m_path, "/");
 
             m_path = Library.Utility.Uri.UrlDecode(m_path);
             m_rawurl = new Utility.Uri(m_useSSL ? "https" : "http", u.Host, m_path).ToString();
@@ -125,115 +127,11 @@ namespace Duplicati.Library.Backend
             get { return "webdav"; }
         }
 
-        public List<IFileEntry> List()
+        public IEnumerable<IFileEntry> List()
         {
             try
             {
-                var req = CreateRequest("");
-
-                req.Method = "PROPFIND";
-                req.Headers.Add("Depth", "1");
-                req.ContentType = "text/xml";
-                req.ContentLength = PROPFIND_BODY.Length;
-
-                var areq = new Utility.AsyncHttpRequest(req);
-                using (System.IO.Stream s = areq.GetRequestStream())
-                    s.Write(PROPFIND_BODY, 0, PROPFIND_BODY.Length);
-                
-                var doc = new System.Xml.XmlDocument();
-                using (var resp = (System.Net.HttpWebResponse)areq.GetResponse())
-                {
-                    int code = (int)resp.StatusCode;
-                    if (code < 200 || code >= 300) //For some reason Mono does not throw this automatically
-                        throw new System.Net.WebException(resp.StatusDescription, null, System.Net.WebExceptionStatus.ProtocolError, resp);
-
-                    if (!string.IsNullOrEmpty(m_debugPropfindFile))
-                    {
-                        using (var rs = areq.GetResponseStream())
-                        using (var fs = new System.IO.FileStream(m_debugPropfindFile, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None))
-                            Utility.Utility.CopyStream(rs, fs, false, m_copybuffer);
-
-                        doc.Load(m_debugPropfindFile);
-                    }
-                    else
-                    {
-                        using (var rs = areq.GetResponseStream())
-                            doc.Load(rs);
-                    }
-                }
-
-                System.Xml.XmlNamespaceManager nm = new System.Xml.XmlNamespaceManager(doc.NameTable);
-                nm.AddNamespace("D", "DAV:");
-
-                List<IFileEntry> files = new List<IFileEntry>();
-                m_filenamelist = new List<string>();
-
-                foreach (System.Xml.XmlNode n in doc.SelectNodes("D:multistatus/D:response/D:href", nm))
-                {
-                    //IIS uses %20 for spaces and %2B for +
-                    //Apache uses %20 for spaces and + for +
-                    string name = Library.Utility.Uri.UrlDecode(n.InnerText.Replace("+", "%2B"));
-
-                    string cmp_path;
-                    
-                    //TODO: This list is getting ridiculous, should change to regexps
-                    
-                    if (name.StartsWith(m_url))
-                        cmp_path = m_url;
-                    else if (name.StartsWith(m_rawurl))
-                        cmp_path = m_rawurl;
-                    else if (name.StartsWith(m_rawurlPort))
-                        cmp_path = m_rawurlPort;
-                    else if (name.StartsWith(m_path))
-                        cmp_path = m_path;
-                    else if (name.StartsWith("/" + m_path))
-                        cmp_path = "/" + m_path;
-                    else if (name.StartsWith(m_sanitizedUrl))
-                        cmp_path = m_sanitizedUrl;
-                    else if (name.StartsWith(m_reverseProtocolUrl))
-                        cmp_path = m_reverseProtocolUrl;
-                    else
-                        continue;
-
-                    if (name.Length <= cmp_path.Length)
-                        continue;
-
-                    name = name.Substring(cmp_path.Length);
-
-                    long size = -1;
-                    DateTime lastAccess = new DateTime();
-                    DateTime lastModified = new DateTime();
-                    bool isCollection = false;
-
-                    System.Xml.XmlNode stat = n.ParentNode.SelectSingleNode("D:propstat/D:prop", nm);
-                    if (stat != null)
-                    {
-                        System.Xml.XmlNode s = stat.SelectSingleNode("D:getcontentlength", nm);
-                        if (s != null)
-                            size = long.Parse(s.InnerText);
-                        s = stat.SelectSingleNode("D:getlastmodified", nm);
-                        if (s != null)
-                            try
-                            {
-                                //Not important if this succeeds
-                                lastAccess = lastModified = DateTime.Parse(s.InnerText, System.Globalization.CultureInfo.InvariantCulture);
-                            }
-                            catch { }
-
-                        s = stat.SelectSingleNode("D:iscollection", nm);
-                        if (s != null)
-                            isCollection = s.InnerText.Trim() == "1";
-                        else
-                            isCollection = (stat.SelectSingleNode("D:resourcetype/D:collection", nm) != null);
-                    }
-
-                    FileEntry fe = new FileEntry(name, size, lastAccess, lastModified);
-                    fe.IsFolder = isCollection;
-                    files.Add(fe);
-                    m_filenamelist.Add(name);
-                }
-
-                return files;
+                return this.ListWithouExceptionCatch();
             }
             catch (System.Net.WebException wex)
             {
@@ -241,14 +139,126 @@ namespace Duplicati.Library.Backend
                         ((wex.Response as System.Net.HttpWebResponse).StatusCode == System.Net.HttpStatusCode.NotFound || (wex.Response as System.Net.HttpWebResponse).StatusCode == System.Net.HttpStatusCode.Conflict))
                     throw new Interface.FolderMissingException(Strings.WEBDAV.MissingFolderError(m_path, wex.Message), wex);
 
+                if (wex.Response as System.Net.HttpWebResponse != null && (wex.Response as System.Net.HttpWebResponse).StatusCode == System.Net.HttpStatusCode.MethodNotAllowed)
+                    throw new UserInformationException(Strings.WEBDAV.MethodNotAllowedError((wex.Response as System.Net.HttpWebResponse).StatusCode), "WebdavMethodNotAllowed", wex);
+
                 throw;
             }
         }
 
-        public void Put(string remotename, string filename)
+        private IEnumerable<IFileEntry> ListWithouExceptionCatch()
+        {
+            var req = CreateRequest("");
+
+            req.Method = "PROPFIND";
+            req.Headers.Add("Depth", "1");
+            req.ContentType = "text/xml";
+            req.ContentLength = PROPFIND_BODY.Length;
+
+            var areq = new Utility.AsyncHttpRequest(req);
+            using (System.IO.Stream s = areq.GetRequestStream())
+                s.Write(PROPFIND_BODY, 0, PROPFIND_BODY.Length);
+
+            var doc = new System.Xml.XmlDocument();
+            using (var resp = (System.Net.HttpWebResponse)areq.GetResponse())
+            {
+                int code = (int)resp.StatusCode;
+                if (code < 200 || code >= 300) //For some reason Mono does not throw this automatically
+                    throw new System.Net.WebException(resp.StatusDescription, null, System.Net.WebExceptionStatus.ProtocolError, resp);
+
+                if (!string.IsNullOrEmpty(m_debugPropfindFile))
+                {
+                    using (var rs = areq.GetResponseStream())
+                    using (var fs = new System.IO.FileStream(m_debugPropfindFile, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None))
+                        Utility.Utility.CopyStream(rs, fs, false, m_copybuffer);
+
+                    doc.Load(m_debugPropfindFile);
+                }
+                else
+                {
+                    using (var rs = areq.GetResponseStream())
+                        doc.Load(rs);
+                }
+            }
+
+            System.Xml.XmlNamespaceManager nm = new System.Xml.XmlNamespaceManager(doc.NameTable);
+            nm.AddNamespace("D", "DAV:");
+
+            List<IFileEntry> files = new List<IFileEntry>();
+            m_filenamelist = new List<string>();
+
+            foreach (System.Xml.XmlNode n in doc.SelectNodes("D:multistatus/D:response/D:href", nm))
+            {
+                //IIS uses %20 for spaces and %2B for +
+                //Apache uses %20 for spaces and + for +
+                string name = Library.Utility.Uri.UrlDecode(n.InnerText.Replace("+", "%2B"));
+
+                string cmp_path;
+
+                //TODO: This list is getting ridiculous, should change to regexps
+
+                if (name.StartsWith(m_url, StringComparison.Ordinal))
+                    cmp_path = m_url;
+                else if (name.StartsWith(m_rawurl, StringComparison.Ordinal))
+                    cmp_path = m_rawurl;
+                else if (name.StartsWith(m_rawurlPort, StringComparison.Ordinal))
+                    cmp_path = m_rawurlPort;
+                else if (name.StartsWith(m_path, StringComparison.Ordinal))
+                    cmp_path = m_path;
+                else if (name.StartsWith("/" + m_path, StringComparison.Ordinal))
+                    cmp_path = "/" + m_path;
+                else if (name.StartsWith(m_sanitizedUrl, StringComparison.Ordinal))
+                    cmp_path = m_sanitizedUrl;
+                else if (name.StartsWith(m_reverseProtocolUrl, StringComparison.Ordinal))
+                    cmp_path = m_reverseProtocolUrl;
+                else
+                    continue;
+
+                if (name.Length <= cmp_path.Length)
+                    continue;
+
+                name = name.Substring(cmp_path.Length);
+
+                long size = -1;
+                DateTime lastAccess = new DateTime();
+                DateTime lastModified = new DateTime();
+                bool isCollection = false;
+
+                System.Xml.XmlNode stat = n.ParentNode.SelectSingleNode("D:propstat/D:prop", nm);
+                if (stat != null)
+                {
+                    System.Xml.XmlNode s = stat.SelectSingleNode("D:getcontentlength", nm);
+                    if (s != null)
+                        size = long.Parse(s.InnerText);
+                    s = stat.SelectSingleNode("D:getlastmodified", nm);
+                    if (s != null)
+                        try
+                        {
+                            //Not important if this succeeds
+                            lastAccess = lastModified = DateTime.Parse(s.InnerText, System.Globalization.CultureInfo.InvariantCulture);
+                        }
+                        catch { }
+
+                    s = stat.SelectSingleNode("D:iscollection", nm);
+                    if (s != null)
+                        isCollection = s.InnerText.Trim() == "1";
+                    else
+                        isCollection = (stat.SelectSingleNode("D:resourcetype/D:collection", nm) != null);
+                }
+
+                FileEntry fe = new FileEntry(name, size, lastAccess, lastModified);
+                fe.IsFolder = isCollection;
+                files.Add(fe);
+                m_filenamelist.Add(name);
+            }
+            
+            return files;
+        }
+
+        public Task PutAsync(string remotename, string filename, CancellationToken cancelToken)
         {
             using (System.IO.FileStream fs = System.IO.File.OpenRead(filename))
-                Put(remotename, fs);
+                return PutAsync(remotename, fs, cancelToken);
         }
 
         public void Get(string remotename, string filename)
@@ -303,9 +313,14 @@ namespace Duplicati.Library.Backend
             get { return Strings.WEBDAV.Description; }
         }
 
+        public string[] DNSName 
+        {
+            get { return new string[] { m_dnsName }; }
+        }
+
         public void Test()
         {
-            List();
+            this.List();
         }
 
         public void CreateFolder()
@@ -354,14 +369,14 @@ namespace Duplicati.Library.Backend
             }
 
             req.KeepAlive = false;
-            req.UserAgent = "Duplicati WEBDAV Client v" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
+            req.UserAgent = "Duplicati WEBDAV Client v" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
 
             return req;
         }
 
         #region IStreamingBackend Members
 
-        public void Put(string remotename, System.IO.Stream stream)
+        public async Task PutAsync(string remotename, System.IO.Stream stream, CancellationToken cancelToken)
         {
             try
             {
@@ -374,7 +389,7 @@ namespace Duplicati.Library.Backend
 
                 Utility.AsyncHttpRequest areq = new Utility.AsyncHttpRequest(req);
                 using (System.IO.Stream s = areq.GetRequestStream())
-                    Utility.Utility.CopyStream(stream, s, true, m_copybuffer);
+                    await Utility.Utility.CopyStreamAsync(stream, s, true, cancelToken, m_copybuffer);
 
                 using (System.Net.HttpWebResponse resp = (System.Net.HttpWebResponse)areq.GetResponse())
                 {

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html xmlns:ng="http://angularjs.org" ng-app="backupApp">
+<html xmlns:ng="http://angularjs.org" ng-app="backupApp" ng-controller="AppController">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>Duplicati</title>
+    <title ng-bind-template="{{systemInfo.MachineName}} - {{brandingService.appName}}"></title>
     <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -26,13 +26,21 @@
     <meta name="theme-color" content="#ffffff">
 
     <link rel="stylesheet" type="text/css" href="styles/smoothness/jquery-ui.min.css">
-    <link rel="stylesheet" type="text/css" href="styles/style.css">
-    <link rel="stylesheet" type="text/css" href="../oem/ngax/styles/oem.css" />
-    <link rel="stylesheet" type="text/css" href="../customized/customized.css" />
+    <link rel="stylesheet" type="text/css" href="styles/style.css?v=2.0.0.7">
+    <link rel="stylesheet" type="text/css" href="styles/themes.css?v=2.0.0.7">
+    <link rel="stylesheet" type="text/css" href="../oem/ngax/styles/oem.css?v=2.0.0.7" />
+    <link rel="stylesheet" type="text/css" href="../customized/customized.css?v=2.0.0.7" />
 
     <script type="text/javascript" src="scripts/libs/oldbrowsersupport.js"></script>
     <script type="text/javascript" src="scripts/libs/cryptojs.js"></script>
     <script type="text/javascript" src="scripts/libs/zxcvbn.js"></script>
+    <script>
+        if (navigator.userAgent.indexOf('MSIE') !== -1 || navigator.appVersion.indexOf('Trident/') > -1) {
+            /* Microsoft Internet Explorer detected in. */
+            /* Bluebird is necessary to make Promises work in IE */
+            document.write('<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bluebird/3.3.4/bluebird.min.js" ></scr' + 'ipt>');
+        }
+    </script>
 
     <script type="text/javascript" src="scripts/libs/jquery.min.js"></script>
     <script type="text/javascript" src="scripts/libs/jquery-ui.min.js"></script>
@@ -53,146 +61,188 @@
     <script type="text/javascript" src="scripts/libs/clipboard.min.js"></script>
     <script type="text/javascript" src="scripts/libs/ngclipboard.min.js"></script>
 
-    <script type="text/javascript" src="scripts/libs/angular-gettext.min.js"></script>    
+    <script type="text/javascript" src="scripts/libs/angular-gettext.min.js"></script>
 
-    <script type="text/javascript" src="scripts/app.js"></script>
-    <script type="text/javascript" src="scripts/menu.js"></script>
-    <script type="text/javascript" src="scripts/helper.js"></script>
-    
-    <script type="text/javascript" src="scripts/angular-gettext-cli_compiled_js_output.js"></script>
+    <script type="text/javascript" src="scripts/app.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/menu.js?v=2.0.0.7"></script>
 
-    <script type="text/javascript" src="scripts/services/AppUtils.js"></script>
-    <script type="text/javascript" src="scripts/services/BrandingService.js"></script>
-    <script type="text/javascript" src="scripts/services/BackupList.js"></script>
-    <script type="text/javascript" src="scripts/services/AppService.js"></script>
-    <script type="text/javascript" src="scripts/services/ServerStatus.js"></script>
-    <script type="text/javascript" src="scripts/services/SystemInfo.js"></script>
-    <script type="text/javascript" src="scripts/services/EditUriBackendConfig.js"></script>
-    <script type="text/javascript" src="scripts/services/EditUriBuiltins.js"></script>
-    <script type="text/javascript" src="scripts/services/NotificationService.js"></script>
-    <script type="text/javascript" src="scripts/services/DialogService.js"></script>
-    <script type="text/javascript" src="scripts/services/EditBackupService.js"></script>
-    <script type="text/javascript" src="scripts/services/CaptchaService.js"></script>
+    <script type="text/javascript" src="scripts/angular-gettext-cli_compiled_js_output.js?v=2.0.0.7"></script>
 
-    <script type="text/javascript" src="scripts/controllers/AppController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/AboutController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/StateController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/SystemSettingsController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/HomeController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/EditBackupController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/RestoreController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/RestoreDirectController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/LogController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/ExportController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/ImportController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/UpdateChangelogController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/DialogController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/LocalDatabaseController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/DeleteController.js"></script>
-    <script type="text/javascript" src="scripts/controllers/CaptchaController.js"></script>
+    <script type="text/javascript" src="scripts/services/AppUtils.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/BrandingService.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/BackupList.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/AppService.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/ServerStatus.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/SystemInfo.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/EditUriBackendConfig.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/EditUriBuiltins.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/NotificationService.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/DialogService.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/LogService.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/EditBackupService.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/services/CaptchaService.js?v=2.0.0.7"></script>
 
-    <script type="text/javascript" src="scripts/filters/timeremaining.js"></script>
-    <script type="text/javascript" src="scripts/filters/highlight.js"></script>
-    <script type="text/javascript" src="scripts/filters/parsetimestamp.js"></script>
-    <script type="text/javascript" src="scripts/filters/moment.js"></script>
+    <script type="text/javascript" src="scripts/controllers/AppController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/AboutController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/StateController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/SystemSettingsController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/HomeController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/EditBackupController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/RestoreController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/RestoreDirectController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/LogController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/BackupLogController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/ExportController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/ImportController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/UpdateChangelogController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/DialogController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/LocalDatabaseController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/DeleteController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/CaptchaController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/RestoreWizardController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/AddWizardController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/PauseController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/CommandlineController.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/controllers/ThrottleController.js?v=2.0.0.7"></script>
 
-    <script type="text/javascript" src="scripts/directives/backupEditUri.js"></script>
-    <script type="text/javascript" src="scripts/directives/sourceFolderPicker.js"></script>
-    <script type="text/javascript" src="scripts/directives/targetFolderPicker.js"></script>
-    <script type="text/javascript" src="scripts/directives/parseFilterType.js"></script>
-    <script type="text/javascript" src="scripts/directives/parseSizeNumber.js"></script>
-    <script type="text/javascript" src="scripts/directives/parseAdvancedOption.js"></script>
-    <script type="text/javascript" src="scripts/directives/stringArrayAsText.js"></script>
-    <script type="text/javascript" src="scripts/directives/waitArea.js"></script>
-    <script type="text/javascript" src="scripts/directives/restoreFilePicker.js"></script>
-    <script type="text/javascript" src="scripts/directives/keyboardHandlers.js"></script>
-    <script type="text/javascript" src="scripts/directives/notificationArea.js"></script>
-    <script type="text/javascript" src="scripts/directives/progressBar.js"></script>
-    <script type="text/javascript" src="scripts/directives/advancedOptionsEditor.js"></script>
-    <script type="text/javascript" src="scripts/directives/timeFormatFixer.js"></script>
+    <script type="text/javascript" src="scripts/filters/timeremaining.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/filters/highlight.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/filters/parsetimestamp.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/filters/moment.js?v=2.0.0.7"></script>
 
-    <script type="text/javascript" src="../package/ngax/package.js"></script>
-    <script type="text/javascript" src="../oem/ngax/scripts/oem.js"></script>
-    <script type="text/javascript" src="../customized/customized.js"></script>
+    <script type="text/javascript" src="scripts/directives/backupEditUri.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/sourceFolderPicker.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/targetFolderPicker.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/parseFilterType.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/parseSizeNumber.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/parseAdvancedOption.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/stringArrayAsText.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/waitArea.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/restoreFilePicker.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/keyboardHandlers.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/notificationArea.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/progressBar.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/advancedOptionsEditor.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/timeFormatFixer.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="scripts/directives/externalLink.js?v=2.0.0.7"></script>
+
+    <script type="text/javascript" src="../package/ngax/package.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="../oem/ngax/scripts/oem.js?v=2.0.0.7"></script>
+    <script type="text/javascript" src="../customized/customized.js?v=2.0.0.7"></script>
 
 </head>
-<body ng-controller="AppController">
-     
+<body class="theme-{{active_theme}}">
+
     <div class="container">
         <div class="header">
             <div class="logo">
-                <a href="#/" class="home">{{brandingService.appName}}</a>
-                <div class="build-suffix" ng-hide="systemInfo.ServerVersionType == 'stable' || systemInfo.ServerVersionType == ''">{{systemInfo.ServerVersionType}}</div>
-                <div class="powered-by">{{brandingService.appSubtitle}}</div>                
+                <a href="#/">
+                    <img class="mainlogo" ng-src="{{brandingService.appLogoPath}}"/>
+                </a>
+
+                <div class="logotext">
+                    <a href="#/" class="home">{{brandingService.appName}}</a>
+                    <div class="build-suffix" ng-hide="systemInfo.ServerVersionType == 'stable' || systemInfo.ServerVersionType == ''">{{systemInfo.ServerVersionType}}</div>
+                    <div class="powered-by">{{brandingService.appSubtitle}}</div>
+                </div>
             </div>
-            
+
             <div class="donate" ng-hide="systemInfo.SuppressDonationMessages">
-                <span translate>Donate</span>
-                <ul>
-                    <li>
-                        <a href="bitcoin:1L74qa1n5SFKwwyHhECTHBJgcf6WT2rJKf" target="_blank"><img src="img/donate/bitcoin.png" alt="{{'Donate with Bitcoins' | translate}}" title="{{'Donate with Bitcoins' | translate}}" /></a>
-                    </li>
-                    <li>
-                        <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=paypal%40hexad%2edk&item_name=Duplicati%20Donation&no_shipping=2&no_note=1&tax=0&currency_code=EUR&bn=PP%2dDonationsBF&charset=UTF%2d8&lc=US" target="_blank"><img src="img/donate/paypal.png" alt="{{'Donate with PayPal' | translate}}" title="{{'Donate with PayPal' | translate}}" /></a>
-                    </li>
-                </ul>
+                <external-link link="'https://www.duplicati.com/donate'">{{'Donate' | translate }}</external-link>
             </div>
-            
+
+
             <a href class="menubutton hidden" data-target="mainmenu" translate>Menu</a>
+
+            <div class="action-icons-small">
+                <div class="pause" ng-class="{'active': state.programState != 'Running'}" ng-click="pauseOptions()" title="{{state.programState == 'Running' ? 'Click to see the pause options' : 'Click to resume'}}"></div>
+                <div class="throttle {{throttle_active ? 'active' : 'inactive'}}" ng-click="throttleOptions()" title="{{'Click to set throttle options' | translate}}" alt="{{'Click to set throttle options' | translate}}"></div>
+            </div>
+
+            <div class="statepadding">
+                <div class="state" ng-controller="StateController">
+                    <div class="content">
+                        <div ng-hide="state.activeTask == null">
+                            <span ng-hide="activeBackup == null">
+                                <span ng-hide="StopReqId == activeTaskID">
+                                    <div class="task-state-info">
+                                      <div class="task-name" title="{{activeBackup.Backup.Name}}">
+                                        <strong>{{activeBackup.Backup.Name}}</strong>
+                                      </div>
+                                      <strong>: </strong>
+                                      <div>
+                                        {{StateText}}
+                                      </div>
+                                    </div>
+                                </span>
+                                <span ng-show="StopReqId == activeTaskID">
+                                    <strong translate>Stopping after upload:</strong> {{activeBackup.Backup.Name}}
+                                </span>
+                            </span>
+                            <span ng-show="activeBackup == null">
+                                <strong ng-hide="StopReqId == activeTaskID" translate>Running task:</strong>
+                                <strong ng-show="StopReqId == activeTaskID" translate>Stopping task:</strong>
+                                {{StateText}}
+                            </span>
+
+                        </div>
+
+                        <div ng-show="state.activeTask == null &amp;&amp; nextTask != null">
+                            <strong translate>Next task:</strong> {{nextTask.Backup.Name}}
+                        </div>
+
+                        <div ng-show="state.activeTask == null &amp;&amp; nextTask == null &amp;&amp; nextScheduledTask != null"><strong translate>Next scheduled task:</strong> {{nextScheduledTask.Backup.Name}} <span title="{{nextScheduledTime | parsetimestamp}}">{{nextScheduledTime | parseDate:forceActualDate }}</span></div>
+
+                        <div ng-show="state.activeTask == null &amp;&amp; nextTask == null &amp;&amp; nextScheduledTask == null" translate>No scheduled tasks</div>
+                    </div>
+
+                    <div class="buttons">
+                        <div ng-hide="state.activeTask == null" class="stop" ng-click="stopDialog()" translate></div>
+                        <div ng-hide="state.activeTask != null || state.programState == 'Running'" class="resume" ng-click="sendResume()" translate></div>
+                    </div>
+
+                    <div class="progress-bar progress-bar-striped" ng-class="{active: Progress < 0}" role="progressbar" aria-valuenow="{{Progress * 100}}" aria-valuemin="0" aria-valuemax="100" style="width:{{Progress * 100}}%"></div>
+
+                </div>
+
+                <div class="action-icons">
+                    <div class="pause" ng-class="{'active': state.programState != 'Running'}" ng-click="pauseOptions()" title="{{state.programState == 'Running' ? 'Click to see the pause options' : 'Click to resume'}}"></div>
+                    <div class="throttle {{throttle_active ? 'active' : 'inactive'}}" ng-click="throttleOptions()" title="{{'Click to set throttle options' | translate}}" alt="{{'Click to set throttle options' | translate}}"></div>
+                </div>
+            </div>
         </div>
 
         <div class="body">
             <div class="mainmenu menu" id="mainmenu">
                 <ul>
                     <li>
-                        <a href="#/add" class="add" translate>Add backup</a>
+                        <a href="#/" class="home" ng-class="{active: current_page == 'home'}" translate>Home</a>
                     </li>
                     <li>
-                        <a href="#/restoredirect" class="restore" translate>Restore backup</a>
+                        <a class="add" href="#/addstart" ng-class="{active: current_page == 'add'}" translate>Add backup</a>
                     </li>
-                    <li ng-show="state.programState == 'Running'">
-                        <a href class="pause" id="contextmenulink_pause"><span translate>Pause</span></a>
-
-                        <ul class="contextmenu" id="contextmenu_pause">
-                            <li>
-                                <a href ng-click="pause('5m')" class="pause-5" translate translate-params-number="5">{{number}} Minutes</a>
-                            </li>
-                            <li>
-                                <a href ng-click="pause('10m')" class="pause-10" translate translate-params-number="10">{{number}} Minutes</a>
-                            </li>
-                            <li>
-                                <a href ng-click="pause('15m')" class="pause-15" translate translate-params-number="15">{{number}} Minutes</a>
-                            </li>
-                            <li>
-                                <a href ng-click="pause('30m')" class="pause-30" translate translate-params-number="30">{{number}} Minutes</a>
-                            </li>
-                            <li>
-                                <a href ng-click="pause('1h')" class="pause-60" translate translate-params-number="1">{{number}} Hour</a>
-                            </li>
-                            <li>
-                                <a href ng-click="pause()" class="pause-x" translate>Until resumed</a>
-                            </li>
-                        </ul>
+                    <li>
+                        <a href="#/restorestart" ng-class="{active: current_page == 'restore'}" class="restore" translate>Restore</a>
                     </li>
                     <li ng-hide="state.programState == 'Running'">
                         <a href ng-click="resume()" id="resume" class="resume" translate>Resume</a>
                     </li>
                     <li>
-                        <a href="#/settings" class="settings">{{'Settings' | translate}}</a>
+                        <a href="#/settings" class="settings"  ng-class="{active: current_page == 'settings'}" translate>Settings</a>
                     </li>
                     <li>
-                        <a href="#/log" class="log">{{'Show log' | translate}}</a>
+                        <a href="#/about" class="about" ng-class="{active: current_page == 'about'}" translate>About</a>
                     </li>
                     <li ng-show="isLoggedIn">
-                        <a href ng-click="log_out()" class="logout">{{'Log out' | translate}}</a>
+                        <a href ng-click="log_out()" class="logout" translate>Log out</a>
                     </li>
                 </ul>
             </div>
-            
-            <div ng-view class="content">
+
+            <div ng-view class="content" style="width: 100%">
             </div>
         </div>
-        
+
         <div class="footer">
             <div class="about-footer">
                 <ul>
@@ -201,39 +251,31 @@
                     </li>
                 </ul>
             </div>
-            
-            <div class="social">
-                {{'Visit us on' | translate}}
+
+            <div class="donate">
                 <ul>
-                    <li>
-                        <a href="https://groups.google.com/forum/#!forum/duplicati" target="_blank"><img src="img/social/ggroups.png" alt="Google Groups" title="Google Groups" width="28" /></a>
-                    </li>
-                    <li>
-                        <a href="https://github.com/duplicati" target="_blank"><img src="img/social/github.png" alt="Github" title="Github" /></a>
-                    </li>
-                    <li>
-                        <a href="https://www.facebook.com/pages/Duplicati/105118456272281" target="_blank"><img src="img/social/facebook.png" alt="Facebook" title="Facebook" /></a>
-                    </li>
-                    <li>
-                        <a href="https://plus.google.com/105271984558189185842" target="_blank"><img src="img/social/google.png" alt="Google Plus" title="Google Plus" /></a>
-                    </li>
-                    <li>
-                        <a href="http://www.duplicati.com" target="_blank"><img src="img/social/duplicati.png" alt="{{'Duplicati Website' | translate}}" title="{{'Duplicati Website' | translate}}" /></a>
+                    <li ng-hide="systemInfo.SuppressDonationMessages">
+                        <external-link link="'https://www.duplicati.com/donate'">{{'Donate' | translate}}</external-link>
                     </li>
                 </ul>
             </div>
-            
-            <div class="donate" ng-hide="systemInfo.SuppressDonationMessages">
-                <span translate>Donate</span>
+            <div class="social">
+                {{'Visit us on' | translate}}<div class="external-link-image"></div>
                 <ul>
                     <li>
-                        <a href="bitcoin:1L74qa1n5SFKwwyHhECTHBJgcf6WT2rJKf" target="_blank"><img src="img/donate/bitcoin.png" alt="{{'Donate with Bitcoins' | translate}}" title="{{'Donate with Bitcoins' | translate}}" /></a>
+                        <a href="https://forum.duplicati.com" target="_blank" rel="external"><img src="img/social/duplicati.png" alt="{{'Duplicati forum' | translate}}" title="{{'Duplicati forum' | translate}}" width="28" /></a>
                     </li>
                     <li>
-                        <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=paypal%40hexad%2edk&item_name=Duplicati%20Donation&no_shipping=2&no_note=1&tax=0&currency_code=EUR&bn=PP%2dDonationsBF&charset=UTF%2d8&lc=US" target="_blank"><img src="img/donate/paypal.png" alt="{{'Donate with PayPal' | translate}}" title="{{'Donate with PayPal' | translate}}" /></a>
+                        <a href="https://github.com/duplicati" target="_blank" rel="external"><img src="img/social/github.png" alt="Github" title="Github" /></a>
                     </li>
+                    <li>
+                        <a href="https://www.facebook.com/pages/Duplicati/105118456272281" target="_blank" rel="external"><img src="img/social/facebook.png" alt="Facebook" title="Facebook" /></a>
+                    </li>
+                    <!-- <li>
+                        <a href="http://www.duplicati.com" target="_blank" rel="external"><img src="img/social/duplicati.png" alt="{{'Duplicati Website' | translate}}" title="{{'Duplicati Website' | translate}}" /></a>
+                    </li> -->
                 </ul>
-            </div>    
+            </div>
         </div>
     </div>
 
@@ -258,7 +300,7 @@
                         <li ng-repeat="btn in state.CurrentItem.buttons track by $index" style="display: inline-block"><a href class="button" ng-click="onButtonClick($index)">{{btn}}</a></li>
                     </ul>
                 </div>
-            </div>            
+            </div>
         </div>
     </div>
 
@@ -271,7 +313,7 @@
                 The connection to the server is lost, attempting again in {{time}} ...
             </div>
             <div class="content" translate ng-hide="state.connectionState !='connecting'">
-                Connnecting to server ...
+                Connecting to server ...
             </div>
             <div class="content buttons">
                 <a href ng-show="state.connectionState != 'connecting'" ng-click="doReconnect()" class="button" translate>Connect now</a>

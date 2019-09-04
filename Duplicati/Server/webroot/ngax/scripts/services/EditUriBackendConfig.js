@@ -80,6 +80,13 @@ backupApp.service('EditUriBackendConfig', function(AppService, AppUtils, SystemI
         return true;
     };
 
+    this.recommend_field = function (scope, field, label, reason, continuation) {
+        if ((scope[field] || '').trim().length == 0)
+            return self.show_warning_dialog(gettextCatalog.getString('You should fill in {{field}}{{reason}}', { field: label || field, reason: reason }), continuation);
+        else
+            continuation();
+    };
+
     this.require_server = function(scope) {
         if ((scope.Server || '').trim().length == 0)
             return self.show_error_dialog(gettextCatalog.getString('You must fill in the server name or address'));
@@ -106,6 +113,13 @@ backupApp.service('EditUriBackendConfig', function(AppService, AppUtils, SystemI
             return self.show_error_dialog(gettextCatalog.getString('You must fill in the username'));
         if ((scope.Password || '').trim().length == 0)
             return self.show_error_dialog(gettextCatalog.getString('You must fill in the password'));
+
+        return true;
+    };
+
+    this.require_username = function(scope) {
+        if ((scope.Username || '').trim().length == 0)
+            return self.show_error_dialog(gettextCatalog.getString('You must fill in the username'));
 
         return true;
     };

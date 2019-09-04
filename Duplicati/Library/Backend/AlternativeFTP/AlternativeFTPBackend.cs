@@ -18,15 +18,19 @@
 //
 #endregion
 
+using Duplicati.Library.Common.IO;
+using Duplicati.Library.Interface;
+using FluentFTP;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Net.FtpClient;
 using System.Net.Security;
 using System.Security.Authentication;
-using Duplicati.Library.Interface;
-using Uri = System.Uri;
+using System.Threading;
+using System.Threading.Tasks;
 using CoreUtility = Duplicati.Library.Utility.Utility;
+using Uri = System.Uri;
 
 namespace Duplicati.Library.Backend.AlternativeFTP
 {
@@ -43,6 +47,9 @@ namespace Duplicati.Library.Backend.AlternativeFTP
         private const string CONFIG_KEY_AFTP_ENCRYPTION_MODE = "aftp-encryption-mode";
         private const string CONFIG_KEY_AFTP_DATA_CONNECTION_TYPE = "aftp-data-connection-type";
         private const string CONFIG_KEY_AFTP_SSL_PROTOCOLS = "aftp-ssl-protocols";
+
+        private const string TEST_FILE_NAME = "duplicati-access-privileges-test.tmp";
+        private const string TEST_FILE_CONTENT = "This file used by Duplicati to test access permissions and could be safely deleted.";
 
         // ReSharper disable InconsistentNaming
         private static readonly string DEFAULT_DATA_CONNECTION_TYPE_STRING = DEFAULT_DATA_CONNECTION_TYPE.ToString();
@@ -84,13 +91,13 @@ namespace Duplicati.Library.Backend.AlternativeFTP
             get
             {
                 return new List<ICommandLineArgument>(new ICommandLineArgument[] {
-                    new CommandLineArgument("auth-password", CommandLineArgument.ArgumentType.Password, Strings.DescriptionAuthPasswordShort, Strings.DescriptionAuthPasswordLong),
-                    new CommandLineArgument("auth-username", CommandLineArgument.ArgumentType.String, Strings.DescriptionAuthUsernameShort, Strings.DescriptionAuthUsernameLong),
-                    new CommandLineArgument("disable-upload-verify", CommandLineArgument.ArgumentType.Boolean, Strings.DescriptionDisableUploadVerifyShort, Strings.DescriptionDisableUploadVerifyLong),
-                    new CommandLineArgument(CONFIG_KEY_AFTP_DATA_CONNECTION_TYPE, CommandLineArgument.ArgumentType.Enumeration, Strings.DescriptionFtpDataConnectionTypeShort, Strings.DescriptionFtpDataConnectionTypeLong, DEFAULT_DATA_CONNECTION_TYPE_STRING, null, Enum.GetNames(typeof(FtpDataConnectionType))),
-                    new CommandLineArgument(CONFIG_KEY_AFTP_ENCRYPTION_MODE, CommandLineArgument.ArgumentType.Enumeration, Strings.DescriptionFtpEncryptionModeShort, Strings.DescriptionFtpEncryptionModeLong, DEFAULT_ENCRYPTION_MODE_STRING, null, Enum.GetNames(typeof(FtpEncryptionMode))),
-                    new CommandLineArgument(CONFIG_KEY_AFTP_SSL_PROTOCOLS, CommandLineArgument.ArgumentType.Flags, Strings.DescriptionSslProtocolsShort, Strings.DescriptionSslProtocolsLong, DEFAULT_SSL_PROTOCOLS_STRING, null, Enum.GetNames(typeof(SslProtocols))),
-                });
+                          new CommandLineArgument("auth-password", CommandLineArgument.ArgumentType.Password, Strings.DescriptionAuthPasswordShort, Strings.DescriptionAuthPasswordLong),
+                          new CommandLineArgument("auth-username", CommandLineArgument.ArgumentType.String, Strings.DescriptionAuthUsernameShort, Strings.DescriptionAuthUsernameLong),
+                          new CommandLineArgument("disable-upload-verify", CommandLineArgument.ArgumentType.Boolean, Strings.DescriptionDisableUploadVerifyShort, Strings.DescriptionDisableUploadVerifyLong),
+                          new CommandLineArgument(CONFIG_KEY_AFTP_DATA_CONNECTION_TYPE, CommandLineArgument.ArgumentType.Enumeration, Strings.DescriptionFtpDataConnectionTypeShort, Strings.DescriptionFtpDataConnectionTypeLong, DEFAULT_DATA_CONNECTION_TYPE_STRING, null, Enum.GetNames(typeof(FtpDataConnectionType))),
+                          new CommandLineArgument(CONFIG_KEY_AFTP_ENCRYPTION_MODE, CommandLineArgument.ArgumentType.Enumeration, Strings.DescriptionFtpEncryptionModeShort, Strings.DescriptionFtpEncryptionModeLong, DEFAULT_ENCRYPTION_MODE_STRING, null, Enum.GetNames(typeof(FtpEncryptionMode))),
+                          new CommandLineArgument(CONFIG_KEY_AFTP_SSL_PROTOCOLS, CommandLineArgument.ArgumentType.Flags, Strings.DescriptionSslProtocolsShort, Strings.DescriptionSslProtocolsLong, DEFAULT_SSL_PROTOCOLS_STRING, null, Enum.GetNames(typeof(SslProtocols))),
+                     });
             }
         }
 
@@ -144,11 +151,7 @@ namespace Duplicati.Library.Backend.AlternativeFTP
                 _userInfo.Domain = "";
 
             _url = u.SetScheme("ftp").SetQuery(null).SetCredentials(null, null).ToString();
-            if (!_url.EndsWith("/"))
-            {
-                _url += "/";
-            }
-
+            _url = Common.IO.Util.AppendDirSeparator(_url, "/");
             _listVerify = !CoreUtility.ParseBoolOption(options, "disable-upload-verify");
 
             // Process the aftp-data-connection-type option
@@ -191,17 +194,17 @@ namespace Duplicati.Library.Backend.AlternativeFTP
             }
         }
 
-        public List<IFileEntry> List()
+        public IEnumerable<IFileEntry> List()
         {
             return List("");
         }
 
-        public List<IFileEntry> List(string filename)
+        public IEnumerable<IFileEntry> List(string filename)
         {
             return List(filename, false);
         }
 
-        private List<IFileEntry> List(string filename, bool stripFile)
+        private IEnumerable<IFileEntry> List(string filename, bool stripFile)
         {
             var list = new List<IFileEntry>();
             string remotePath = filename;
@@ -212,7 +215,7 @@ namespace Duplicati.Library.Backend.AlternativeFTP
 
                 // Get the remote path
                 var url = new Uri(this._url);
-                remotePath = "/" + (url.AbsolutePath.EndsWith("/") ? url.AbsolutePath.Substring(0, url.AbsolutePath.Length - 1) : url.AbsolutePath);
+                remotePath = "/" + (url.AbsolutePath.EndsWith("/", StringComparison.Ordinal) ? url.AbsolutePath.Substring(0, url.AbsolutePath.Length - 1) : url.AbsolutePath);
 
                 if (!string.IsNullOrEmpty(filename))
                 {
@@ -223,7 +226,7 @@ namespace Duplicati.Library.Backend.AlternativeFTP
                     }
                     else if (filename.Contains("/"))
                     {
-                        remotePath += filename.Substring(0, filename.LastIndexOf("/", StringComparison.InvariantCulture));
+                        remotePath += filename.Substring(0, filename.LastIndexOf("/", StringComparison.Ordinal));
                     }
                     // else: stripping the filename in this case ignoring it
                 }
@@ -304,10 +307,10 @@ namespace Duplicati.Library.Backend.AlternativeFTP
             return list;
         }
 
-        public void Put(string remotename, System.IO.Stream input)
+        public async Task PutAsync(string remotename, Stream input, CancellationToken cancelToken)
         {
             string remotePath = remotename;
-            long streamLen = -1;
+            long streamLen;
 
             try
             {
@@ -317,11 +320,7 @@ namespace Duplicati.Library.Backend.AlternativeFTP
                 {
                     streamLen = input.Length;
                 }
-                // ReSharper disable once EmptyGeneralCatchClause
-                catch
-                {
-
-                }
+                catch (NotSupportedException) { streamLen = -1; }
 
                 // Get the remote path
                 remotePath = "";
@@ -332,38 +331,29 @@ namespace Duplicati.Library.Backend.AlternativeFTP
                     remotePath += remotename;
                 }
 
-                using (var outputStream = ftpClient.OpenWrite(remotePath))
+                var success = await ftpClient.UploadAsync(input, remotePath, FtpExists.Overwrite, createRemoteDir: false, token: cancelToken, progress: null).ConfigureAwait(false);
+                if (!success)
                 {
-                    try
-                    {
-                        CoreUtility.CopyStream(input, outputStream, true, _copybuffer);
-                    }
-                    finally
-                    {
-                        outputStream.Close();
-                    }
+                    throw new UserInformationException(string.Format(Strings.ErrorWriteFile, remotename), "AftpPutFailure");
                 }
 
-
-                if (_listVerify)
+                // check remote file size; matching file size indicates completion
+                var sleepTime = 250;
+                var maxVerifyMilliseconds = 5000;
+                var m = maxVerifyMilliseconds;
+                long remoteSize = 0;
+                while (m > 0)
                 {
-                    var fileEntries = List(remotename, true);
-
-                    foreach (var fileEntry in fileEntries)
+                    remoteSize = ftpClient.GetFileSize(remotePath);
+                    if (streamLen == remoteSize)
                     {
-                        if (fileEntry.Name.Equals(remotename) || fileEntry.Name.EndsWith("/" + remotename) || fileEntry.Name.EndsWith("\\" + remotename))
-                        {
-                            if (fileEntry.Size < 0 || streamLen < 0 || fileEntry.Size == streamLen)
-                            {
-                                return;
-                            }
-
-                            throw new UserInformationException(Strings.ListVerifySizeFailure(remotename, fileEntry.Size, streamLen));
-                        }
+                        return;
                     }
-
-                    throw new UserInformationException(Strings.ListVerifyFailure(remotename, fileEntries.Select(n => n.Name)));
+                    m -= sleepTime;
+                    Thread.Sleep(sleepTime);
                 }
+
+                throw new UserInformationException(Strings.ListVerifySizeFailure(remotename, remoteSize, streamLen), "AftpListVerifySizeFailure");
             }
             catch (FtpCommandException ex)
             {
@@ -376,15 +366,15 @@ namespace Duplicati.Library.Backend.AlternativeFTP
             }
         }
 
-        public void Put(string remotename, string localname)
+        public Task PutAsync(string remotename, string localname, CancellationToken cancelToken)
         {
-            using (System.IO.FileStream fs = System.IO.File.Open(localname, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read))
+            using (FileStream fs = File.Open(localname, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
-                Put(remotename, fs);
+                return PutAsync(remotename, fs, cancelToken);
             }
         }
 
-        public void Get(string remotename, System.IO.Stream output)
+        public void Get(string remotename, Stream output)
         {
             var ftpClient = CreateClient();
 
@@ -413,7 +403,7 @@ namespace Duplicati.Library.Backend.AlternativeFTP
 
         public void Get(string remotename, string localname)
         {
-            using (System.IO.FileStream fs = System.IO.File.Open(localname, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None))
+            using (FileStream fs = File.Open(localname, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 Get(remotename, fs);
             }
@@ -447,9 +437,74 @@ namespace Duplicati.Library.Backend.AlternativeFTP
             }
         }
 
+        public string[] DNSName
+        {
+            get { return new string[] { new Uri(_url).Host }; }
+        }
+
+        private static Stream StringToStream(string str)
+        {
+            var stream = new MemoryStream();
+            var writer = new StreamWriter(stream) { AutoFlush = true };
+            writer.Write(str);
+            return stream;
+        }
+
+        /// <summary>
+        /// Test FTP access permissions.
+        /// </summary>
         public void Test()
         {
-            List();
+            var list = List();
+
+            // Delete test file if exists
+            if (list.Any(entry => entry.Name == TEST_FILE_NAME))
+            {
+                try
+                {
+                    Delete(TEST_FILE_NAME);
+                }
+                catch (Exception e)
+                {
+                    throw new Exception(string.Format(Strings.ErrorDeleteFile, e.Message), e);
+                }
+            }
+
+            // Test write permissions
+            using (var testStream = StringToStream(TEST_FILE_CONTENT))
+            {
+                try
+                {
+                    PutAsync(TEST_FILE_NAME, testStream, CancellationToken.None).Wait();
+                }
+                catch (Exception e)
+                {
+                    throw new Exception(string.Format(Strings.ErrorWriteFile, e.Message), e);
+                }
+            }
+
+            // Test read permissions
+            using (var stream = new MemoryStream())
+            {
+                try
+                {
+                    Get(TEST_FILE_NAME, stream);
+                }
+                catch (Exception e)
+                {
+                    throw new Exception(string.Format(Strings.ErrorReadFile, e.Message), e);
+                }
+            }
+
+            // Cleanup
+            try
+            {
+                Delete(TEST_FILE_NAME);
+            }
+            catch (Exception e)
+            {
+                throw new Exception(string.Format(Strings.ErrorDeleteFile, e.Message), e);
+            }
         }
 
         public void CreateFolder()
@@ -459,7 +514,7 @@ namespace Duplicati.Library.Backend.AlternativeFTP
             var url = new Uri(_url);
 
             // Get the remote path
-            var remotePath = url.AbsolutePath.EndsWith("/") ? url.AbsolutePath.Substring(0, url.AbsolutePath.Length - 1) : url.AbsolutePath;
+            var remotePath = url.AbsolutePath.EndsWith("/", StringComparison.Ordinal) ? url.AbsolutePath.Substring(0, url.AbsolutePath.Length - 1) : url.AbsolutePath;
 
             // Try to create the directory 
             client.CreateDirectory(remotePath, true);
@@ -468,7 +523,7 @@ namespace Duplicati.Library.Backend.AlternativeFTP
 
         public void Dispose()
         {
-            if(Client != null)
+            if (Client != null)
                 Client.Dispose();
 
             Client = null;
@@ -477,13 +532,10 @@ namespace Duplicati.Library.Backend.AlternativeFTP
 
         private FtpClient CreateClient()
         {
+            var uri = new Uri(_url);
+
             if (this.Client == null) // Create connection if it doesn't exist yet
             {
-
-                var url = _url;
-
-                var uri = new Uri(url);
-
                 var ftpClient = new FtpClient
                 {
                     Host = uri.Host,
@@ -497,12 +549,13 @@ namespace Duplicati.Library.Backend.AlternativeFTP
 
                 ftpClient.ValidateCertificate += HandleValidateCertificate;
 
-                // Get the remote path
-                var remotePath = uri.AbsolutePath.EndsWith("/") ? uri.AbsolutePath.Substring(0, uri.AbsolutePath.Length - 1) : uri.AbsolutePath;
-                ftpClient.SetWorkingDirectory(remotePath);
-
                 this.Client = ftpClient;
             } // else reuse existing connection
+
+            // Change working directory to the remote path
+            // Do this every time to prevent issues when FtpClient silently reconnects after failure.
+            var remotePath = uri.AbsolutePath.EndsWith("/", StringComparison.Ordinal) ? uri.AbsolutePath.Substring(0, uri.AbsolutePath.Length - 1) : uri.AbsolutePath;
+            this.Client.SetWorkingDirectory(remotePath);
 
             return this.Client;
         }
@@ -520,7 +573,7 @@ namespace Duplicati.Library.Backend.AlternativeFTP
                 var certHash = (_validHashes != null && _validHashes.Length > 0) ? CoreUtility.ByteArrayAsHexString(e.Certificate.GetCertHash()) : null;
                 if (certHash != null)
                 {
-                    if (_validHashes.Any(hash => !string.IsNullOrEmpty(hash) && certHash.Equals(hash, StringComparison.InvariantCultureIgnoreCase)))
+                    if (_validHashes.Any(hash => !string.IsNullOrEmpty(hash) && certHash.Equals(hash, StringComparison.OrdinalIgnoreCase)))
                     {
                         e.Accept = true;
                     }

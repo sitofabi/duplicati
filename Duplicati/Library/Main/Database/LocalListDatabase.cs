@@ -1,4 +1,4 @@
-//  Copyright (C) 2015, The Duplicati Team
+﻿//  Copyright (C) 2015, The Duplicati Team
 
 //  http://www.duplicati.com, info@duplicati.com
 //
@@ -19,6 +19,8 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Text;
+using Duplicati.Library.Common;
+using Duplicati.Library.Common.IO;
 
 namespace Duplicati.Library.Main.Database
 {
@@ -56,9 +58,9 @@ namespace Duplicati.Library.Main.Database
         
         private class FileSets : IFileSets
         {
-            private System.Data.IDbConnection m_connection;
+            private readonly System.Data.IDbConnection m_connection;
             private string m_tablename;
-            private KeyValuePair<long, DateTime>[] m_filesets;
+            private readonly KeyValuePair<long, DateTime>[] m_filesets;
             
             public FileSets(LocalListDatabase owner, DateTime time, long[] versions)
             {
@@ -94,7 +96,7 @@ namespace Duplicati.Library.Main.Database
             
             private class Fileversion : IFileversion
             {
-                private System.Data.IDataReader m_reader;
+                private readonly System.Data.IDataReader m_reader;
                 public string Path { get; private set; }
                 public bool More { get; private set; }
                 
@@ -139,7 +141,7 @@ namespace Duplicati.Library.Main.Database
 
                     //If we have a prefix rule, apply it
                     if (!string.IsNullOrWhiteSpace(prefixrule))
-                        cmd.ExecuteNonQuery(string.Format(@"DELETE FROM ""{0}"" WHERE SUBSTR(""Path"", 1, 1) != ?", tmpnames.Tablename), prefixrule);
+                        cmd.ExecuteNonQuery(string.Format(@"DELETE FROM ""{0}"" WHERE SUBSTR(""Path"", 1, {1}) != ?", tmpnames.Tablename, prefixrule.Length), prefixrule);
 
                     // Then we recursively find the largest prefix
                     cmd.CommandText = string.Format(@"SELECT ""Path"" FROM ""{0}"" ORDER BY LENGTH(""Path"") DESC LIMIT 1", tmpnames.Tablename);
@@ -148,7 +150,7 @@ namespace Duplicati.Library.Main.Database
                     if (v0 != null)
                         maxpath = v0.ToString();
 
-                    var dirsep = Duplicati.Library.Utility.Utility.GuessDirSeparator(maxpath);
+                    var dirsep = Util.GuessDirSeparator(maxpath);
     
                     cmd.CommandText = string.Format(@"SELECT COUNT(*) FROM ""{0}""", tmpnames.Tablename);
                     var filecount = cmd.ExecuteScalarInt64(0);
@@ -161,50 +163,56 @@ namespace Duplicati.Library.Main.Database
     
                     while (filecount != foundfiles && maxpath.Length > 0)
                     {
-                        var mp = Duplicati.Library.Utility.Utility.AppendDirSeparator(maxpath, dirsep);
-                        cmd.SetParameterValue(0, mp.Length);
-                        cmd.SetParameterValue(1, mp);
+                        cmd.SetParameterValue(0, maxpath.Length);
+                        cmd.SetParameterValue(1, maxpath);
+                        
                         foundfiles = cmd.ExecuteScalarInt64(0);
-    
+
                         if (filecount != foundfiles)
                         {
                             var oldlen = maxpath.Length;
                             var lix = maxpath.LastIndexOf(dirsep, maxpath.Length - 2, StringComparison.Ordinal);
+
                             maxpath = maxpath.Substring(0, lix + 1);
-                            if (string.IsNullOrWhiteSpace(maxpath) || maxpath.Length == oldlen)
+                            if (string.IsNullOrWhiteSpace(maxpath) || maxpath.Length == oldlen || maxpath == "\\\\")
                                 maxpath = "";
                         }
                     }
 
-                    // Special handling for Windows and multi-drive backups as they do not have a single common root
+                    // Special handling for Windows and multi-drive/UNC backups as they do not have a single common root
                     if (string.IsNullOrWhiteSpace(maxpath) && string.IsNullOrWhiteSpace(prefixrule))
                     {
-                        var roots = cmd.ExecuteReaderEnumerable(string.Format(@"SELECT DISTINCT SUBSTR(""Path"", 1, 1) FROM ""{0}""", tmpnames.Tablename)).Select(x => x.ConvertValueToString(0)).ToArray();
-                        return roots.Select(x => GetLargestPrefix(filter, x).First()).Distinct().ToArray();
+                        var paths = cmd.ExecuteReaderEnumerable(string.Format(@"SELECT Path FROM ""{0}""", tmpnames.Tablename)).Select(x => x.ConvertValueToString(0)).ToArray();
+                        var roots = paths.Select(x => x.Substring(0, 1)).Distinct().Where(x => x != "\\").ToArray();
+
+                        //unc path like \\server.domain\
+                        var regexUNCPrefix = new System.Text.RegularExpressions.Regex(@"^\\\\.*?\\");
+                        var rootsUNC = paths.Select(x => regexUNCPrefix.Match(x)).Where(x => x.Success).Select(x => x.Value).Distinct().ToArray();
+
+                        return roots.Concat(rootsUNC).Select(x => GetLargestPrefix(filter, x).First()).Distinct().ToArray();
                     }
-    
-                    return 
+
+                    return
                         new IFileversion[] {
-                            new FileversionFixed() { Path = maxpath == "" ? "" : Duplicati.Library.Utility.Utility.AppendDirSeparator(maxpath, dirsep) }
+                            new FileversionFixed { Path = maxpath == "" ? "" : Util.AppendDirSeparator(maxpath, dirsep) }
                         };
                 }
-    
             }
             
             private IEnumerable<string> SelectFolderEntries(System.Data.IDbCommand cmd, string prefix, string table)
             {
                 if (!string.IsNullOrEmpty(prefix))
-                    prefix = Duplicati.Library.Utility.Utility.AppendDirSeparator(prefix, Duplicati.Library.Utility.Utility.GuessDirSeparator(prefix));
+                    prefix = Util.AppendDirSeparator(prefix, Util.GuessDirSeparator(prefix));
                 
                 var ppl = prefix.Length;
                 using(var rd = cmd.ExecuteReader(string.Format(@"SELECT DISTINCT ""Path"" FROM ""{0}"" ", table)))
                     while (rd.Read())
                     {
                         var s = rd.GetString(0);
-                        if (!s.StartsWith(prefix))
+                        if (!s.StartsWith(prefix, StringComparison.Ordinal))
                             continue;
 
-                        var dirsep = Duplicati.Library.Utility.Utility.GuessDirSeparator(s);
+                        var dirsep = Util.GuessDirSeparator(s);
 
                         s = s.Substring(ppl);
                         var ix = s.IndexOf(dirsep, StringComparison.Ordinal);
@@ -223,14 +231,14 @@ namespace Duplicati.Library.Main.Database
                     if (filter == null || filter.Empty)
                         pathprefix = "";
                     else if (filter as Library.Utility.FilterExpression == null || ((Library.Utility.FilterExpression)filter).Type != Duplicati.Library.Utility.FilterType.Simple || ((Library.Utility.FilterExpression)filter).GetSimpleList().Length != 1)
-                        throw new ArgumentException("Filter for list-folder-contents must be a path prefix with no wildcards", "filter");
+                        throw new ArgumentException("Filter for list-folder-contents must be a path prefix with no wildcards", nameof(filter));
                     else
                         pathprefix = ((Library.Utility.FilterExpression)filter).GetSimpleList().First();
 
-                    var dirsep = Duplicati.Library.Utility.Utility.GuessDirSeparator(pathprefix);
+                    var dirsep = Util.GuessDirSeparator(pathprefix);
 
                     if (pathprefix.Length > 0 || dirsep == "/")
-                        pathprefix = Duplicati.Library.Utility.Utility.AppendDirSeparator(pathprefix, dirsep);
+                        pathprefix = Util.AppendDirSeparator(pathprefix, dirsep);
                     
                     using(var tmpnames = new FilteredFilenameTable(m_connection, new Library.Utility.FilterExpression(new string[] { pathprefix + "*" }, true), null))
                     using(var cmd = m_connection.CreateCommand())
@@ -266,8 +274,8 @@ namespace Duplicati.Library.Main.Database
                         //Then we select the matching results
                         var filesets = string.Format(@"SELECT ""FilesetID"", ""Timestamp"" FROM ""{0}"" ORDER BY ""Timestamp"" DESC", m_tablename);
                         var cartesianPathFileset = string.Format(@"SELECT ""A"".""Path"", ""B"".""FilesetID"" FROM ""{0}"" A, (" + filesets + @") B ORDER BY ""A"".""Path"" ASC, ""B"".""Timestamp"" DESC", tbname, m_tablename);
-                                                
-                        var filesWithSizes = @"SELECT ""Length"", ""FilesetEntry"".""FilesetID"", ""File"".""Path"" FROM ""Blockset"", ""FilesetEntry"", ""File"" WHERE ""File"".""BlocksetID"" = ""Blockset"".""ID"" AND ""FilesetEntry"".""FileID"" = ""File"".""ID"" ";
+
+                        var filesWithSizes = string.Format(@"SELECT ""Length"", ""FilesetEntry"".""FilesetID"", ""File"".""Path"" FROM ""Blockset"", ""FilesetEntry"", ""File"" WHERE ""File"".""BlocksetID"" = ""Blockset"".""ID"" AND ""FilesetEntry"".""FileID"" = ""File"".""ID"" AND FilesetEntry.""FilesetID"" IN (SELECT DISTINCT ""FilesetID"" FROM ""{0}"") ", m_tablename);
                         var query = @"SELECT ""C"".""Path"", ""D"".""Length"", ""C"".""FilesetID"" FROM (" + cartesianPathFileset + @") C LEFT OUTER JOIN (" + filesWithSizes + @") D ON ""C"".""FilesetID"" = ""D"".""FilesetID"" AND ""C"".""Path"" = ""D"".""Path""";
                         
                         cmd.AddParameter(pathprefix, "1");                    
@@ -318,7 +326,7 @@ namespace Duplicati.Library.Main.Database
                     //Then we select the matching results
                     var filesets = string.Format(@"SELECT ""FilesetID"", ""Timestamp"" FROM ""{0}"" ORDER BY ""Timestamp"" DESC", m_tablename);
                     var cartesianPathFileset = string.Format(@"SELECT ""A"".""Path"", ""B"".""FilesetID"" FROM ""{0}"" A, (" + filesets + @") B ORDER BY ""A"".""Path"" ASC, ""B"".""Timestamp"" DESC", tmpnames.Tablename, m_tablename);
-                    var filesWithSizes = @"SELECT ""Length"", ""FilesetEntry"".""FilesetID"", ""File"".""Path"" FROM ""Blockset"", ""FilesetEntry"", ""File"" WHERE ""File"".""BlocksetID"" = ""Blockset"".""ID"" AND ""FilesetEntry"".""FileID"" = ""File"".""ID"" ";
+                    var filesWithSizes = string.Format(@"SELECT ""Length"", ""FilesetEntry"".""FilesetID"", ""File"".""Path"" FROM ""Blockset"", ""FilesetEntry"", ""File"" WHERE ""File"".""BlocksetID"" = ""Blockset"".""ID"" AND ""FilesetEntry"".""FileID"" = ""File"".""ID""  AND FilesetEntry.""FilesetID"" IN (SELECT DISTINCT ""FilesetID"" FROM ""{0}"") ", m_tablename);
                     var query = @"SELECT ""C"".""Path"", ""D"".""Length"", ""C"".""FilesetID"" FROM (" + cartesianPathFileset + @") C LEFT OUTER JOIN (" + filesWithSizes + @") D ON ""C"".""FilesetID"" = ""D"".""FilesetID"" AND ""C"".""Path"" = ""D"".""Path""";
                     using(var rd = cmd.ExecuteReader(query))
                         if(rd.Read())
@@ -349,7 +357,7 @@ namespace Duplicati.Library.Main.Database
                         dict[m_filesets[i].Key] = i;
 
                     using(var cmd = m_connection.CreateCommand())
-                    using(var rd = cmd.ExecuteReader(string.Format(@"SELECT DISTINCT ""ID"" FROM ""Fileset"" ORDER BY ""Timestamp"" DESC ", m_tablename)))
+                    using(var rd = cmd.ExecuteReader(@"SELECT DISTINCT ""ID"" FROM ""Fileset"" ORDER BY ""Timestamp"" DESC "))
                         while (rd.Read())
                         {
                             var id = rd.GetInt64(0);
@@ -368,7 +376,7 @@ namespace Duplicati.Library.Main.Database
                     for(var i = 0; i < m_filesets.Length; i++)
                         dict[m_filesets[i].Key] = i;
                     
-                    var summation = @"SELECT ""A"".""FilesetID"" AS ""FilesetID"", COUNT(*) AS ""FileCount"", SUM(""C"".""Length"") AS ""FileSizes"" FROM ""FilesetEntry"" A, ""File"" B, ""Blockset"" C WHERE ""A"".""FileID"" = ""B"".""ID"" AND ""B"".""BlocksetID"" = ""C"".""ID"" GROUP BY ""A"".""FilesetID"" ";
+                    var summation = string.Format(@"SELECT ""A"".""FilesetID"" AS ""FilesetID"", COUNT(*) AS ""FileCount"", SUM(""C"".""Length"") AS ""FileSizes"" FROM ""FilesetEntry"" A, ""File"" B, ""Blockset"" C WHERE ""A"".""FileID"" = ""B"".""ID"" AND ""B"".""BlocksetID"" = ""C"".""ID"" AND ""A"".""FilesetID"" IN (SELECT DISTINCT ""FilesetID"" FROM ""{0}"") GROUP BY ""A"".""FilesetID"" ",m_tablename);
                     
                     using(var cmd = m_connection.CreateCommand())
                     using (var rd = cmd.ExecuteReader(string.Format(@"SELECT DISTINCT ""A"".""FilesetID"", ""B"".""FileCount"", ""B"".""FileSizes"" FROM ""{0}"" A LEFT OUTER JOIN ( " + summation + @" ) B ON ""A"".""FilesetID"" = ""B"".""FilesetID"" ORDER BY ""A"".""Timestamp"" DESC ", m_tablename)))

@@ -1,4 +1,4 @@
-#region Disclaimer / License
+﻿#region Disclaimer / License
 // Copyright (C) 2015, The Duplicati Team
 // http://www.duplicati.com, info@duplicati.com
 // 
@@ -17,23 +17,26 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 // 
 #endregion
+using Duplicati.Library.Common.IO;
+using Duplicati.Library.Interface;
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Text.RegularExpressions;
-using Duplicati.Library.Interface;
 using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Duplicati.Library.Backend
 {
+    // ReSharper disable once UnusedMember.Global
+    // This class is instantiated dynamically in the BackendLoader.
     public class FTP : IBackend, IStreamingBackend
     {
         private System.Net.NetworkCredential m_userInfo;
         private readonly string m_url;
 
         private readonly bool m_useSSL = false;
-        private readonly bool m_defaultPassive = true;
-        private readonly bool m_passive = false;
+        private readonly bool m_passiveMode = false;
         private readonly bool m_listVerify = true;
 
         private readonly byte[] m_copybuffer = new byte[Duplicati.Library.Utility.Utility.DEFAULT_BUFFER_SIZE];
@@ -57,34 +60,37 @@ namespace Duplicati.Library.Backend
 
             var u = new Utility.Uri(url);
             u.RequireHost();
+            string username = null;
+            string password = null;
 
             if (!string.IsNullOrEmpty(u.Username))
             {
-                m_userInfo = new System.Net.NetworkCredential();
-                m_userInfo.UserName = u.Username;
-                if (!string.IsNullOrEmpty(u.Password))
-                    m_userInfo.Password = u.Password;
-                else if (options.ContainsKey("auth-password"))
-                    m_userInfo.Password = options["auth-password"];
+                username = u.Username;
             }
-            else
+            else if (options.ContainsKey("auth-username"))
             {
-                if (options.ContainsKey("auth-username"))
-                {
-                    m_userInfo = new System.Net.NetworkCredential();
-                    m_userInfo.UserName = options["auth-username"];
-                    if (options.ContainsKey("auth-password"))
-                        m_userInfo.Password = options["auth-password"];
-                }
+                username = options["auth-username"];
             }
+
+            if (!string.IsNullOrEmpty(u.Username) && !string.IsNullOrEmpty(u.Password)) {
+                        password = u.Password;
+            }
+            else if (options.ContainsKey("auth-password")) {
+                password = options["auth-password"];
+            }
+
+            m_userInfo = new System.Net.NetworkCredential
+            {
+                UserName = username,
+                Password = password
+            };
 
             //Bugfix, see http://connect.microsoft.com/VisualStudio/feedback/details/695227/networkcredential-default-constructor-leaves-domain-null-leading-to-null-object-reference-exceptions-in-framework-code
             if (m_userInfo != null)
                 m_userInfo.Domain = "";
 
             m_url = u.SetScheme("ftp").SetQuery(null).SetCredentials(null, null).ToString();
-            if (!m_url.EndsWith("/"))
-                m_url += "/";
+            m_url = Util.AppendDirSeparator(m_url, "/");
 
             m_useSSL = Utility.Utility.ParseBoolOption(options, "use-ssl");
 
@@ -92,14 +98,8 @@ namespace Duplicati.Library.Backend
 
             if (Utility.Utility.ParseBoolOption(options, "ftp-passive"))
             {
-                m_defaultPassive = false;
-                m_passive = true;
-            }
-            if (Utility.Utility.ParseBoolOption(options, "ftp-regular"))
-            {
-                m_defaultPassive = false;
-                m_passive = false;
-            }
+                m_passiveMode = true;
+            } else m_passiveMode = !Utility.Utility.ParseBoolOption(options, "ftp-regular");
         }
 
         #region Regular expression to parse list lines
@@ -138,17 +138,19 @@ namespace Duplicati.Library.Backend
             string time = m.Groups["timestamp"].Value;
             string dir = m.Groups["dir"].Value;
 
-            //Unused
-            //string permission = m.Groups["permission"].Value;
-
             if (dir != "" && dir != "-")
+            {
                 f.IsFolder = true;
+            }
             else
+            {
                 f.Size = long.Parse(m.Groups["size"].Value);
+            }
 
-            DateTime t;
-            if (DateTime.TryParse(time, out t))
+            if (DateTime.TryParse(time, out DateTime t))
+            {
                 f.LastAccess = f.LastModification = t;
+            }
 
             return f;
         }
@@ -165,39 +167,19 @@ namespace Duplicati.Library.Backend
             get { return "ftp"; }
         }
 
-        public bool SupportsStreaming
+        private T HandleListExceptions<T>(Func<T> func, System.Net.FtpWebRequest req)
         {
-            get { return true; }
+            T ret = default(T);
+            Action action = () => ret = func();
+            HandleListExceptions(action, req);
+            return ret;
         }
 
-        public List<IFileEntry> List()
+        private void HandleListExceptions(Action action, System.Net.FtpWebRequest req)
         {
-            return List("");
-        }
-        
-        public List<IFileEntry> List(string filename)
-        {
-            var req = CreateRequest(filename);
-            req.Method = System.Net.WebRequestMethods.Ftp.ListDirectoryDetails;
-            req.UseBinary = false;
-
             try
             {
-                var lst = new List<IFileEntry>();
-                var areq = new Utility.AsyncHttpRequest(req);
-                using (var resp = areq.GetResponse())
-                using (var rs = areq.GetResponseStream())
-                using (var sr = new System.IO.StreamReader(new StreamReadHelper(rs)))
-                {
-                    string line;
-                    while ((line = sr.ReadLine()) != null)
-                    {
-                        FileEntry f = ParseLine(line);
-                        if (f != null)
-                            lst.Add(f);
-                    }
-                }
-                return lst;
+                action();
             }
             catch (System.Net.WebException wex)
             {
@@ -208,7 +190,71 @@ namespace Duplicati.Library.Backend
             }
         }
 
-        public void Put(string remotename, System.IO.Stream input)
+        public IEnumerable<IFileEntry> List()
+        {
+            return List("");
+        }
+
+        public IEnumerable<IFileEntry> List(string filename)
+        {
+            var req = CreateRequest(filename);
+            req.Method = System.Net.WebRequestMethods.Ftp.ListDirectoryDetails;
+            req.UseBinary = false;
+
+            System.Net.WebResponse resp = null;
+            System.IO.Stream rs = null;
+            System.IO.StreamReader sr = null;
+
+            try
+            {
+                HandleListExceptions(
+                    () =>
+                        {
+                            var areq = new Utility.AsyncHttpRequest(req);
+                            resp = areq.GetResponse();
+                            rs = areq.GetResponseStream();
+                            sr = new System.IO.StreamReader(new StreamReadHelper(rs));
+                        },
+                    req);
+                
+                string line;
+                while ((line = HandleListExceptions(sr.ReadLine, req)) != null)
+                {
+                    FileEntry f = ParseLine(line);
+                    if (f != null)
+                        yield return f;
+                }
+            }
+            finally
+            {
+                try
+                {
+                    if (sr != null)
+                    {
+                        sr.Dispose();
+                    }
+                }
+                finally
+                {
+                    try
+                    {
+                        if (rs != null)
+                        {
+                            rs.Dispose();
+                        }
+                    }
+                    finally
+                    {
+                        if (resp != null)
+                        {
+                            resp.Dispose();
+                        }
+                    }
+                }
+            }
+        }
+
+        public async Task PutAsync(string remotename, System.IO.Stream input, CancellationToken cancelToken)
         {
             System.Net.FtpWebRequest req = null;
             try
@@ -222,18 +268,18 @@ namespace Duplicati.Library.Backend
                 catch {}
 
                 Utility.AsyncHttpRequest areq = new Utility.AsyncHttpRequest(req);
-                using (System.IO.Stream rs = areq.GetRequestStream())
-                    Utility.Utility.CopyStream(input, rs, true, m_copybuffer);
+                using (System.IO.Stream rs = areq.GetRequestStream(streamLen))
+                    await Utility.Utility.CopyStreamAsync(input, rs, true, cancelToken, m_copybuffer).ConfigureAwait(false);
                 
-                if (m_listVerify) 
+                if (m_listVerify)
                 {
-                    List<IFileEntry> files = List(remotename);
+                    IEnumerable<IFileEntry> files = List(remotename);
                     foreach(IFileEntry fe in files)
-                        if (fe.Name.Equals(remotename) || fe.Name.EndsWith("/" + remotename) || fe.Name.EndsWith("\\" + remotename)) 
+                        if (fe.Name.Equals(remotename) || fe.Name.EndsWith("/" + remotename, StringComparison.Ordinal) || fe.Name.EndsWith("\\" + remotename, StringComparison.Ordinal)) 
                         {
                             if (fe.Size < 0 || streamLen < 0 || fe.Size == streamLen)
                                 return;
-                        
+
                             throw new Exception(Strings.FTPBackend.ListVerifySizeFailure(remotename, fe.Size, streamLen));
                         } 
 
@@ -250,10 +296,10 @@ namespace Duplicati.Library.Backend
             }
         }
 
-        public void Put(string remotename, string localname)
+        public Task PutAsync(string remotename, string localname, CancellationToken cancelToken)
         {
             using (System.IO.FileStream fs = System.IO.File.Open(localname, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read))
-                Put(remotename, fs);
+                return PutAsync(remotename, fs, cancelToken);
         }
 
         public void Get(string remotename, System.IO.Stream output)
@@ -306,9 +352,14 @@ namespace Duplicati.Library.Backend
             }
         }
 
+        public string[] DNSName
+        {
+            get { return new string[] { new Uri(m_url).Host }; }
+        }
+
         public void Test()
         {
-            List();
+            this.TestList();
         }
 
         public void CreateFolder()
@@ -327,8 +378,7 @@ namespace Duplicati.Library.Backend
 
         public void Dispose()
         {
-            if (m_userInfo != null)
-                m_userInfo = null;
+            m_userInfo = null;
         }
 
         #endregion
@@ -341,17 +391,18 @@ namespace Duplicati.Library.Backend
         private System.Net.FtpWebRequest CreateRequest(string remotename, bool createFolder)
         {
             string url = m_url;
-            if (createFolder && url.EndsWith("/"))
+            if (createFolder && url.EndsWith("/", StringComparison.Ordinal))
                 url = url.Substring(0, url.Length - 1);
             
-            System.Net.FtpWebRequest req = (System.Net.FtpWebRequest)System.Net.FtpWebRequest.Create(url + remotename);
+            System.Net.FtpWebRequest req = (System.Net.FtpWebRequest)System.Net.WebRequest.Create(url + remotename);
 
             if (m_userInfo != null)
+            {
                 req.Credentials = m_userInfo;
-            req.KeepAlive = false;
+            }
 
-            if (!m_defaultPassive)
-                req.UsePassive = m_passive;
+            req.KeepAlive = false;
+            req.UsePassive = m_passiveMode;
 
             if (m_useSSL)
                 req.EnableSsl = m_useSSL;

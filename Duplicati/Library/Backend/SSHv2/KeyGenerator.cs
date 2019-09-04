@@ -161,7 +161,7 @@ namespace Duplicati.Library.Backend
             if (!int.TryParse(keylen_s, out keylen))
                 keylen = DEFAULT_KEYLEN;
 
-            if (KEYTYPE_RSA.Equals(keytype, StringComparison.InvariantCultureIgnoreCase))
+            if (KEYTYPE_RSA.Equals(keytype, StringComparison.OrdinalIgnoreCase))
             {
                 var rsa = RSACryptoServiceProvider.Create();
                 if (keylen > 0)
@@ -180,7 +180,7 @@ namespace Duplicati.Library.Backend
                 
                 return OutputKey(EncodeDER(privateEntries), EncodePEM(publicEntries), KEY_TEMPLATE_RSA, PUB_KEY_FORMAT_RSA, username);
             }
-            else if (KEYTYPE_DSA.Equals(keytype, StringComparison.InvariantCultureIgnoreCase))
+            else if (KEYTYPE_DSA.Equals(keytype, StringComparison.OrdinalIgnoreCase))
             {
             
                 var dsa = DSACryptoServiceProvider.Create();
@@ -204,7 +204,7 @@ namespace Duplicati.Library.Backend
             }
             else
             {
-                throw new UserInformationException(string.Format("Unsupported key type: {0}", keytype));
+                throw new UserInformationException(string.Format("Unsupported key type: {0}", keytype), "SSHUnsupportedKey");
             }
         }
         public string Key { get { return "ssh-keygen"; } }

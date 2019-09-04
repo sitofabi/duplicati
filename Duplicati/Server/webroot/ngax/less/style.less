@@ -65,6 +65,32 @@ textarea {
     max-width: 94%;
 }
 
+.external-link-image {
+    display: inline-block;
+    margin-left: 8px;
+    margin-right: 8px;
+    height: 16px;
+    width: 16px;
+    background: url('../img/external-link-hover.png');
+    background-size: 16px;
+}
+
+a {
+    .external-link-image {
+        background: url('../img/external-link.png');
+        background-size: 16px;
+    }
+}
+
+.header {
+    a:hover {
+        .external-link-image {
+            background: url('../img/external-link-hover.png');
+            background-size: 16px;
+        }
+    }
+}
+
 .button {
     display: block;
     background: @lColor;
@@ -93,6 +119,13 @@ textarea {
     overflow: auto;
 }
 
+.not-clickable {
+    cursor: default !important;
+    > a, span, div {
+        cursor: default !important;
+    }
+}
+
 .ui-match {
     font-weight: bold;
     color: darkgreen;
@@ -111,6 +144,88 @@ wait-area {
 .exceptiontext {
     background-color: lightgray;
     color: black;
+}
+
+.backup-result {
+    width: 90%;
+    display: grid;
+    grid-template-columns: 50% 50%;
+    grid-auto-rows: minmax(50px, auto);
+    margin: 0 auto;
+
+    div .horizontal-rule {
+        width: 100%;
+        border-bottom: 1px solid @border;
+        margin: 5px 0 5px 0;
+    }
+
+    .box {
+        margin: 10px;
+        margin-bottom: 0px;
+    }
+
+    .title {
+        color: darken(@hColor, 10%);
+        font-weight: bold;
+        font-size: 30px;
+    }
+
+    .item {
+        display: block;
+
+        .key {
+            color: @hColor;
+            font-weight: bold;
+        }
+
+        .value {
+            color: @tColor;
+        }
+
+        .expanded {
+            padding: 0 10px 0 18px;
+            margin-bottom: 10px;
+        }
+    }
+
+    .one {
+        border-right: 1px solid @border;
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .two {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .wide {
+        grid-column: span 2;
+        border-top: 1px solid @border;
+        padding-top: 10px;
+    }
+       
+    .three {
+        grid-row: 2;
+    }
+
+    .four {
+        grid-row: 3;
+        margin-bottom: 10px;
+    }
+
+}
+
+.success-color {
+    color: #339900;
+}
+
+.error-color {
+    color: #cc0000;
+}
+
+.warning-color {
+    color: #ffcc00;
 }
 
 ul.tabs {
@@ -171,20 +286,14 @@ ul.tabs {
     }
 
     .entries {
-        div.entryline {
+        div.entryline.clickable {
             cursor: pointer;
         }
     }
 
     .entries.livedata {
-        li {
-            height: 1.2em;
-            overflow: hidden;
-        }
-
         li.expanded {
             height: auto;
-            overflow: auto;
         }
     }
 
@@ -368,18 +477,39 @@ ul.notification {
 }
 
 .logo {
+    img.mainlogo {
+        height: 64px;
+        width: 64px;
+        float: left;
+        padding-right: 8px;
+        padding-top: 2px;
+    }
+
+    div.logotext {
+        float: left;
+    }
+
+    a {
+        float: left;
+        display: block;
+        line-height: normal;
+    }
+
     div.build-suffix {
+        clear: both;
         display: inline;
+        float: left;
         font-size: 16px;
+        line-height: 16px;
     }
 
     div.powered-by {
         font-size: 16px;
         margin: 0px;
         line-height: 16px;
+        float: left;
         padding: 0px;
-        margin-top: -25px;
-        margin-left: 10px;
+        margin-left: 5px;
     }
 }
 
@@ -414,10 +544,15 @@ body {
         position: relative;
 
         .header {
-            height: 70px;
             line-height: 70px;
             background: @headerBg;
             overflow: hidden;
+            height: 70px;
+            position: fixed;
+            top: 0px;
+            left: 0px;
+            right: 0px;
+            z-index: 100;
 
             a {
                 color: @lColor;
@@ -432,8 +567,144 @@ body {
                 font-size: 30px;
                 font-weight: 700;
                 float: left;
-                padding-left: 50px;
+                padding-left: 40px;
             }
+
+            .statepadding {
+                padding-right: 90px;
+                margin-left: 320px;
+            }
+
+            .state {
+                float: left;
+                color: darken(@hColor, 10%);
+                width: 595px;
+                padding: 13px 15px;
+                margin: 10px 20px;
+                border: 1px darken(@hColor, 10%) solid;
+                font-weight: 300;
+                font-size: 18px;
+                overflow: hidden;
+                line-height: normal;
+                display: inline-block;
+                background-color: white;
+                text-overflow: ellipsis;
+                position: relative;
+                height: 25px;
+
+                strong {
+                    display: inline;
+                    margin-right: 10px;
+                }
+
+                span {
+                    display: inline;
+                }
+
+                .button {
+                    position: static;
+                    margin-top: 70px;
+                }
+
+                .content {
+                    position: relative;
+                    z-index: 10;
+                    margin-right: 40px;
+                    display: block;
+                    text-overflow: ellipsis;
+                    overflow: hidden;
+                    white-space: nowrap;
+                }
+
+                .buttons {
+                    position: absolute;
+                    right: 0px;
+                    top: 0px;
+                    bottom: 0px;
+                    width: 26px;
+                    margin: 13px 15px;
+
+                    .stop {
+                        display: block;
+                        width: 26px;
+                        height: 26px;
+                        background: url('../img/progress-stop.png');
+                        background-size: 26px;
+                        cursor: pointer;
+                    }
+
+                    .resume {
+                        display: block;
+                        width: 26px;
+                        height: 26px;
+                        background: url('../img/progress-resume.png');
+                        background-size: 26px;
+                        cursor: pointer;
+                    }
+                }
+
+                .progress-bar {
+                    position: absolute;
+                    top: 0px;
+                    bottom: 0px;
+                    left: 0px;
+                    background: fade(@hColor, 25%);
+                    z-index: 5;
+                }
+
+                .task-name {
+                    overflow:hidden;
+                    text-overflow:ellipsis;
+                    cursor: help;
+                }
+
+                .task-state-info {
+                    display: flex;
+                }
+            }
+
+            .action-icons {
+                display: inline-block;
+                line-height: normal;
+                margin: 10px 0px;
+                padding: 13px 0px;
+                float: left;
+            }
+
+            .action-icons-small {
+                display: none;
+                float: right;
+                margin-top: 21px;
+                line-height: normal;
+            }
+
+            .action-icons,
+            .action-icons-small {
+                > .pause {
+                    width: 26px;
+                    height: 26px;
+                    display: inline-block;
+                    cursor: pointer;
+                    background: url('../img/pause.png');
+                }
+
+                > .pause.active {
+                    background: url('../img/resume.png');
+                }
+
+                > .throttle {
+                    width: 26px;
+                    height: 26px;
+                    display: inline-block;
+                    cursor: pointer;
+                    background: url('../img/throttle.png');
+                }
+
+                > .throttle.inactive {
+                    opacity: 0.5;
+                }
+            }
+
 
             .about-header {
                 float: right;
@@ -474,6 +745,7 @@ body {
                 img:hover {
                     opacity: 1;
                 }
+
             }
         }
 
@@ -481,7 +753,7 @@ body {
             width: 100%;
             overflow: hidden;
             min-height: 500px;
-            padding-top: 50px;
+            padding-top: 120px;
             padding-bottom: 70px;
 
             a {
@@ -492,11 +764,7 @@ body {
                 width: 260px;
                 padding-left: 40px;
                 float: left;
-
-                .contextmenu {
-                    left: 260px;
-                    top: 0px;
-                }
+                position: fixed;
 
                 > ul {
                     > li {
@@ -509,7 +777,10 @@ body {
                             display: block;
                         }
 
-                        > a:hover,
+                        > a:hover {
+                            color: white;
+                        }
+
                         > a.active {
                             color: white;
                         }
@@ -524,11 +795,6 @@ body {
 
                         > a.pause {
                             background: url('../img/mainmenu/pause.png') no-repeat 8px 7px;
-
-                            > span {
-                                padding-right: 25px;
-                                background: url('../img/mainmenu/arrow_right.png') right center no-repeat;
-                            }
                         }
 
                         > a.resume {
@@ -547,43 +813,111 @@ body {
                             background: url('../img/mainmenu/logout.png') no-repeat 8px 7px;
                         }
 
-                        > a.add:hover,
+                        > a.home {
+                            background: url('../img/mainmenu/home.png') no-repeat 8px 7px;
+                        }
+
+                        > a.about {
+                            background: url('../img/mainmenu/about.png') no-repeat 8px 7px;
+                        }
+
+                        > a.pause {
+                            > span {
+                                padding-right: 25px;
+                                background: url('../img/mainmenu/arrow_right.png') right center no-repeat;
+                            }
+                        }
+
+                        > a.home.active {
+                            background: lighten(@lColor, 15%) url('../img/mainmenu/over/home.png') no-repeat 8px 7px;
+                        }
+
                         > a.add.active {
+                            background: lighten(@lColor, 15%) url('../img/mainmenu/over/add.png') no-repeat 8px 7px;
+                        }
+
+                        > a.restore.active {
+                            background: lighten(@lColor, 15%) url('../img/mainmenu/over/restore.png') no-repeat 8px 7px;
+                        }
+
+                        > a.pause.active {
+                            background: lighten(@lColor, 15%) url('../img/mainmenu/over/pause.png') no-repeat 8px 7px;
+                        }
+
+                        > a.resume.active {
+                            background: lighten(@lColor, 15%) url('../img/mainmenu/over/resume.png') no-repeat 8px 7px;
+                        }
+
+                        > a.settings.active {
+                            background: lighten(@lColor, 15%) url('../img/mainmenu/over/settings.png') no-repeat 8px 7px;
+                        }
+
+                        > a.log.active {
+                            background: lighten(@lColor, 15%) url('../img/mainmenu/over/log.png') no-repeat 8px 7px;
+                        }
+
+                        > a.about.active {
+                            background: lighten(@lColor, 15%) url('../img/mainmenu/over/about.png') no-repeat 8px 7px;
+                        }
+
+                        > a.pause.open.active {
+                            > span {
+                                background: url('../img/mainmenu/over/arrow_down.png') right center no-repeat;
+                            }
+                        }
+
+                        > a.add:hover {
                             background: @lColor url('../img/mainmenu/over/add.png') no-repeat 8px 7px;
                         }
 
-                        > a.restore:hover,
-                        > a.restore.active {
+                        > a.restore:hover {
                             background: @lColor url('../img/mainmenu/over/restore.png') no-repeat 8px 7px;
                         }
 
-                        > a.pause:hover,
-                        > a.pause.active {
+                        > a.pause:hover {
                             background: @lColor url('../img/mainmenu/over/pause.png') no-repeat 8px 7px;
+                        }
 
+                        > a.pause:hover {
                             > span {
                                 background: url('../img/mainmenu/over/arrow_right.png') right center no-repeat;
                             }
                         }
 
-                        > a.resume:hover,
-                        > a.resume.active {
+                        > a.pause.open:hover {
+                            > span {
+                                background: url('../img/mainmenu/over/arrow_down.png') right center no-repeat;
+                            }
+                        }
+
+                        > a.pause.open {
+                            > span {
+                                background: url('../img/mainmenu/arrow_down.png') right center no-repeat;
+                            }
+                        }
+
+                        > a.resume:hover {
                             background: @lColor url('../img/mainmenu/over/resume.png') no-repeat 8px 7px;
                         }
 
-                        > a.settings:hover,
-                        > a.settings.active {
+                        > a.settings:hover {
                             background: @lColor url('../img/mainmenu/over/settings.png') no-repeat 8px 7px;
                         }
 
-                        > a.log:hover,
-                        > a.log.active {
+                        > a.log:hover {
                             background: @lColor url('../img/mainmenu/over/log.png') no-repeat 8px 7px;
                         }
 
-                        > a.logout:hover,
-                        > a.logout.active {
+                        > a.logout:hover {
                             background: @lColor url('../img/mainmenu/over/logout.png') no-repeat 8px 7px;
+                        }
+
+                        > a.home:hover {
+                            background: @lColor url('../img/mainmenu/over/home.png') no-repeat 8px 7px;
+                        }
+
+                        > a.about:hover {
+                            background: @lColor url('../img/mainmenu/over/about.png') no-repeat 8px 7px;
                         }
                     }
 
@@ -609,6 +943,7 @@ body {
                 padding: 5px;
 
                 li {
+
                     a {
                         color: @lColor;
                         font-size: 15px;
@@ -618,10 +953,12 @@ body {
                         min-width: 200px;
                         padding: 4px 10px;
                         white-space: nowrap;
+                        padding-left: 45px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
                     }
 
-                    a:hover,
-                    a.active {
+                    a:hover {
                         background: @lColor;
                         color: white;
                     }
@@ -634,36 +971,15 @@ body {
 
             .content {
                 float: left;
-                padding-left: 50px;
+                padding-left: 350px;
                 padding-bottom: 50px;
-                max-width: 700px;
+                max-width: 70%;
 
                 ul.tabs > li {
                     display: inline-block;
                 }
 
-                .state {
-                    color: @hColor;
-                    width: 575px;
-                    padding: 13px 15px;
-                    border: 1px @hColor solid;
-                    font-weight: 300;
-                    font-size: 18px;
-                    overflow: hidden;
-
-                    strong {
-                        display: inline-block;
-                        margin-right: 10px;
-                    }
-
-                    .button {
-                        position: static;
-                        margin-top: 70px;
-                    }
-                }
-
                 .tasks {
-                    padding-top: 20px;
 
                     .tasklist {
                         .task {
@@ -677,10 +993,24 @@ body {
                             padding-bottom: 20px;
                         }
 
+                        .task:first-child {
+                            padding-top: 0px;
+                            border-top: 0px none;
+                        }
+
+			.progress-small {
+                            text-align: center;
+                            height: 18px;
+                            background: rgba(164, 209,235, 0.50);
+                        }
+
+                        .progress-small-bg {
+                            border: 1px #65b1dd solid;
+                            width: 200px;
+                        }
+
                         a {
                             font-size: 30px;
-                            padding-left: 55px;
-                            background: url('../img/backup.png') no-repeat 5px 6px;
                             font-weight: 300;
                             display: inline-block;
 
@@ -946,6 +1276,19 @@ body {
                                 width: 60px;
                             }
 
+                            .hint, .retention-options {
+                                clear: both;
+                                margin-left: 190px;
+                                margin-top: 50px;
+                                font-style: italic;
+                            }
+
+                            .retention-options {
+                                input {
+                                    margin-bottom: 10px;
+                                }
+                            }
+
                             .advancedoptions {
                                 padding-top: 15px;
                                 clear: both;
@@ -1129,7 +1472,7 @@ body {
 
                 div.restore {
                     @legends-steps: 2;
-                    @legends-width: 450px;
+                    @legends-width: 700px;
                     @legends-padding-left: (700px - @legends-width) / 2;
                     @circle-width: 43px;
                     @step-width: @legends-width / @legends-steps;
@@ -1150,6 +1493,40 @@ body {
                         }
                     }
                 }
+
+                div.restore.restore-direct {
+                    @legends-steps: 4;
+                    @legends-width: 700px;
+                    @legends-padding-left: (700px - @legends-width) / 2;
+                    @circle-width: 43px;
+                    @step-width: @legends-width / @legends-steps;
+
+                    .steps {
+                        margin-left: (@step-width - @circle-width) / 2 + @legends-padding-left;
+
+                        .step {
+                            padding-left: @step-width - @circle-width;
+                        }
+                    }
+
+                    .steps-legend {
+                        padding-left: @legends-padding-left;
+
+                        li {
+                            width: @step-width;
+                        }
+                    }
+
+                    .step:first-child {
+                        padding-left: 0;
+                        background: transparent;
+                    }
+
+                    .steps-legend {
+                        padding-left: 20px;
+                    }
+                }
+
 
                 div.headerthreedotmenu {
                     margin: 20px 0 20px 0;
@@ -1211,8 +1588,13 @@ body {
 
                     ul.entries {
                         li {
-                            padding-top: 15px;
+                            padding: 10px 0 10px 0;
+                            border-bottom: 1px solid @border;
                         }
+                    }
+
+                    ul.backuplog {
+                        list-style: none;
                     }
                 }
 
@@ -1240,6 +1622,7 @@ body {
                 float: left;
                 overflow: hidden;
                 padding-right: 20px;
+                display: none;
 
                 span {
                     display: block;
@@ -1258,6 +1641,7 @@ body {
             }
 
             .donate {
+                display: none;
                 float: right;
                 padding-right: 40px;
                 overflow: hidden;
@@ -1268,7 +1652,7 @@ body {
 
                     li {
                         float: left;
-                        margin-left: 20px;
+                        margin-left: 10px;
 
                         a {
                             img {
@@ -1537,6 +1921,60 @@ div.modal-dialog {
     }
 }
 
+.importpage {
+    form.styled {
+        input {
+            margin-top: 11px;
+            margin-bottom: 11px;
+        }
+    }
+}
+
+.restorewizard,
+.addwizard {
+    form.styled {
+        ul {
+            margin: 20px;
+            margin-left: 0px;
+        }
+
+        input[type="radio"] {
+            width: 20px;
+            margin-left: 5px;
+            margin-right: 5px;
+        }
+
+        label {
+            width: auto;
+            line-height: normal;
+        }
+
+        div.subtext {
+            clear: both;
+            margin-left: 30px;
+            padding-top: 5px;
+            color: lightgray;
+
+        }
+    }
+}
+
+.pauseoptions {
+    form.styled {
+        li {
+            line-height: normal;
+            padding: 0px;
+
+            input {
+                height: auto;
+                margin-top: 8px;
+                margin-right: 8px;
+                width: auto;
+            }
+        }
+    }
+}
+
 /* Progress bar styles from Bootstrap */
 .progress-bar-striped {
     background-image: -webkit-linear-gradient(45deg, rgba(255, 255, 255, .15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .15) 50%, rgba(255, 255, 255, .15) 75%, transparent 75%, transparent);
@@ -1561,7 +1999,6 @@ div.modal-dialog {
     min-height: 25px;
 
     > span {
-        position: absolute;
         vertical-align: middle;
         display: block;
         width: 100%;
@@ -1595,6 +2032,7 @@ div.modal-dialog {
         transition: width .6s ease;
         height: 100%;
         position: absolute;
+        top:0;
 
         &.active {
             -webkit-animation: progress-bar-stripes 2s linear infinite;
@@ -1719,7 +2157,7 @@ div.modal-dialog {
                 &.x-tree-icon-hypervmachine {
                     background-position: -96px 0px;
                 }
-				
+
 				&.x-tree-icon-mssql {
                     background-position: -96px -32px;
                 }
@@ -1797,14 +2235,78 @@ div.modal-dialog {
     }
 }
 
+.throttlesettings
+{
+    div.multiple {
+
+        select {
+            width: auto;
+            margin-right: 5px;
+        }
+
+        input {
+            width: 100px;
+        }
+
+        input.checkbox {
+            width: auto;
+        }
+
+        label {
+            line-height: 35px;
+            padding: 0 15px;
+            width: auto;
+            min-width: 150px;
+        }
+    }
+
+    .disabled {
+        color: lighten(@tColor, 25%);
+        input, select {
+            color: lighten(@tColor, 25%);
+        }
+    }
+
+}
+
 // Smaller screen sizes
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
     body {
         .container {
             .header {
                 .donate {
+                }
+            }
+        }
+    }
+}
+
+@media (max-width: 1150px) {
+    body {
+        .container {
+            .header {
+                height: 140px;
+
+                .statepadding {
+                    padding-right: 90px;
+                    margin-left: 0px;
+                }
+
+                .state {
+                    width: 100%;
+                    margin: 10px 40px;
+                    clear: left;
+                    float: left;
+                }
+
+                .action-icons {
                     display: none;
                 }
+
+                .action-icons-small {
+                    display: inline-block;
+                }
+
 
                 .menubutton {
                     display: block;
@@ -1819,7 +2321,7 @@ div.modal-dialog {
                     color: #8f8f8f;
                     float: right;
                     top: 10px;
-                    width: 80px;
+                    padding-left: 20px;
                     text-transform: uppercase;
                     text-align: right;
                 }
@@ -1828,15 +2330,19 @@ div.modal-dialog {
                     background-image: url('../img/menu_active.png');
                     color: @lColor;
                 }
+
+                .donate {
+                    display: none;
+                }
             }
 
             .body {
                 position: relative;
-                padding-top: 0;
+                padding-top: 140px;
 
                 .mainmenu {
                     display: none;
-                    position: absolute;
+                    position: fixed;
                     background: none repeat scroll 0 0 white;
                     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
                     left: 10px;
@@ -1859,18 +2365,12 @@ div.modal-dialog {
 
                 .content {
                     float: none;
-                    padding: 50px 20px;
-                    margin: 0 auto;
+                    padding: 20px 20px;
+                    margin: 0px auto 30px auto;
 
                     .state {
                         width: auto;
                     }
-                }
-            }
-
-            .footer {
-                .donate {
-                    display: block;
                 }
             }
 
@@ -1907,6 +2407,22 @@ div.modal-dialog {
 
     body {
         .container {
+
+            .header {
+                .logo {
+                    padding-left: 10px;
+                }
+                .statepadding {
+                    padding-right: 50px;
+                }
+                .state {
+                    margin-left: 10px;
+                }
+                .menubutton {
+                    margin-right: 5px;
+                }
+            }
+
             .body {
                 .content {
                     div.add,
@@ -1995,9 +2511,11 @@ div.modal-dialog {
 
         .container {
             .body {
-                padding-bottom: 0;
+                padding-bottom: 10px;
 
                 .content {
+                    margin: 0px auto;
+
                     div.add,
                     div.restore {
                         form {
@@ -2100,6 +2618,7 @@ div.modal-dialog {
 
                 .about-footer {
                     padding-right: 0;
+                    display: block;
 
                     span {
                         padding-left: 0;
@@ -2148,6 +2667,7 @@ div.modal-dialog {
                 }
 
                 .donate {
+                    display: block;
                     ul {
                         li {
                             display: inline-block;
@@ -2195,12 +2715,23 @@ div.modal-dialog {
         .container {
             .header {
                 .logo {
-                    padding-left: 20px;
+                    padding-left: 5px;
                 }
 
                 .menubutton {
                     margin-right: 5px;
+                }
 
+                .state {
+                    margin-left: 5px;
+                }
+
+                .statepadding {
+                    padding-right: 40px;
+                }
+
+                .menubutton {
+                    padding-left: 10px;
                 }
             }
 
@@ -2219,7 +2750,7 @@ div.modal-dialog {
                 }
 
                 .content {
-                    padding: 50px 15px;
+                    padding: 15px;
 
                     div.add,
                     div.restore {
@@ -2253,6 +2784,62 @@ div.modal-dialog {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@media (max-width: 400px) {
+    body {
+        font-size: 15px;
+
+        .container {
+            .header {
+                .menubutton {
+                    margin-right: 0px;
+                    padding-left: 0px;
+                    padding-right: 40px;
+
+                    span {
+                        display: none;
+                    }
+                }
+            }
+        }
+    }
+}
+
+@media (max-width: 325px) {
+    body {
+        font-size: 15px;
+
+        .container {
+            .header {
+                .logo {
+                    div {
+                        display: none;
+                    }
+                }
+            }
+        }
+    }
+}
+
+@media (max-width: 200px) {
+    body {
+        font-size: 15px;
+
+        .container {
+            .header {
+                .menubutton {
+                    position: static;
+                    margin-top: 0px;
+                }
+
+                .action-icons-small {
+                    clear: right;
+                    margin-top: 0px;
                 }
             }
         }

@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Duplicati.Library.Common;
 
 namespace Duplicati.Library.UsageReporter
 {
@@ -36,10 +37,13 @@ namespace Duplicati.Library.UsageReporter
             System.Diagnostics.Process pi = null;
             try
             {
-                var psi = new System.Diagnostics.ProcessStartInfo(cmd, args);
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true; // Suppress error messages
-                psi.UseShellExecute = false;
+                var psi = new System.Diagnostics.ProcessStartInfo(cmd, args)
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true, // Suppress error messages
+                    RedirectStandardInput = false,
+                    UseShellExecute = false
+                };
 
                 pi = System.Diagnostics.Process.Start(psi);
                 pi.WaitForExit(5000);
@@ -68,19 +72,19 @@ namespace Duplicati.Library.UsageReporter
         {
             get
             {
-                if (!Utility.Utility.IsClientLinux)
+                if (!Platform.IsClientPosix)
                 {
                     return Environment.OSVersion.ToString();
                 }
-                else if (Utility.Utility.IsClientOSX)
+                else if (Platform.IsClientOSX)
                 {
                     var m = RunProgramAndReadOutput("sw_vers", null);
                     if (m != null)
                     {
                         var lines = m.Split(new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-                        var product = lines.Where(x => x.Trim().StartsWith("ProductName:")).Select(x => x.Trim().Substring("ProductName:".Length).Trim()).FirstOrDefault();
-                        var version = lines.Where(x => x.Trim().StartsWith("ProductVersion:")).Select(x => x.Trim().Substring("ProductVersion:".Length).Trim()).FirstOrDefault();
-                        var build = lines.Where(x => x.Trim().StartsWith("BuildVersion:")).Select(x => x.Trim().Substring("BuildVersion:".Length).Trim()).FirstOrDefault();
+                        var product = lines.Where(x => x.Trim().StartsWith("ProductName:", StringComparison.Ordinal)).Select(x => x.Trim().Substring("ProductName:".Length).Trim()).FirstOrDefault();
+                        var version = lines.Where(x => x.Trim().StartsWith("ProductVersion:", StringComparison.Ordinal)).Select(x => x.Trim().Substring("ProductVersion:".Length).Trim()).FirstOrDefault();
+                        var build = lines.Where(x => x.Trim().StartsWith("BuildVersion:", StringComparison.Ordinal)).Select(x => x.Trim().Substring("BuildVersion:".Length).Trim()).FirstOrDefault();
                         if (!string.IsNullOrWhiteSpace(product))
                             return string.Format("{0} {1} {2}", product, version, build);
                     }
@@ -118,18 +122,18 @@ namespace Duplicati.Library.UsageReporter
                             }
                         }
 
-                        var primary = keys.FirstOrDefault(x => string.Equals(x.Item1, "PRETTY_NAME", StringComparison.InvariantCultureIgnoreCase));
+                        var primary = keys.FirstOrDefault(x => string.Equals(x.Item1, "PRETTY_NAME", StringComparison.OrdinalIgnoreCase));
                         if (primary != null)
                             return primary.Item2;
 
-                        var name = keys.FirstOrDefault(x => string.Equals(x.Item1, "NAME", StringComparison.InvariantCultureIgnoreCase));
-                        var version = keys.FirstOrDefault(x => string.Equals(x.Item1, "VERSION", StringComparison.InvariantCultureIgnoreCase));
+                        var name = keys.FirstOrDefault(x => string.Equals(x.Item1, "NAME", StringComparison.OrdinalIgnoreCase));
+                        var version = keys.FirstOrDefault(x => string.Equals(x.Item1, "VERSION", StringComparison.OrdinalIgnoreCase));
 
-                        name = name ?? keys.FirstOrDefault(x => string.Equals(x.Item1, "DISTRIB_ID", StringComparison.InvariantCultureIgnoreCase));
-                        name = name ?? keys.FirstOrDefault(x => string.Equals(x.Item1, "ID", StringComparison.InvariantCultureIgnoreCase));
+                        name = name ?? keys.FirstOrDefault(x => string.Equals(x.Item1, "DISTRIB_ID", StringComparison.OrdinalIgnoreCase));
+                        name = name ?? keys.FirstOrDefault(x => string.Equals(x.Item1, "ID", StringComparison.OrdinalIgnoreCase));
 
-                        version = version ?? keys.FirstOrDefault(x => string.Equals(x.Item1, "DISTRIB_RELEASE", StringComparison.InvariantCultureIgnoreCase));
-                        version = version ?? keys.FirstOrDefault(x => string.Equals(x.Item1, "VERSION_ID", StringComparison.InvariantCultureIgnoreCase));
+                        version = version ?? keys.FirstOrDefault(x => string.Equals(x.Item1, "DISTRIB_RELEASE", StringComparison.OrdinalIgnoreCase));
+                        version = version ?? keys.FirstOrDefault(x => string.Equals(x.Item1, "VERSION_ID", StringComparison.OrdinalIgnoreCase));
 
                         if (name != null && version != null)
                             return string.Format("{0} {1}", name.Item2, version.Item2);
@@ -145,7 +149,7 @@ namespace Duplicati.Library.UsageReporter
                     if (m != null)
                     {
                         var lines = m.Split(new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-                        var line = lines.Where(x => x.Trim().StartsWith("Description:")).Select(x => x.Trim().Substring("Description:".Length).Trim()).FirstOrDefault();
+                        var line = lines.Where(x => x.Trim().StartsWith("Description:", StringComparison.Ordinal)).Select(x => x.Trim().Substring("Description:".Length).Trim()).FirstOrDefault();
                         if (!string.IsNullOrWhiteSpace(line))
                             return line;
                     }
@@ -154,7 +158,6 @@ namespace Duplicati.Library.UsageReporter
                     return RunProgramAndReadOutput("uname", "-srvmpio");
                 }
 
-                return null;
             }
         }    
     }

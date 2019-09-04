@@ -16,33 +16,95 @@
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 using System;
+using System.Linq;
+using Duplicati.Library.Logging;
 
 namespace Duplicati.Library.Main
 {
     /// <summary>
     /// Interface for recieving messages from the Duplicati operations
     /// </summary>
-    public interface IMessageSink
+    public interface IMessageSink : Logging.ILogDestination
     {
+        /// <summary>
+        /// Handles an event from the backend
+        /// </summary>
+        /// <param name="action">The backend action.</param>
+        /// <param name="type">The event type.</param>
+        /// <param name="path">The target path.</param>
+        /// <param name="size">The size of the element.</param>
         void BackendEvent(BackendActionType action, BackendEventType type, string path, long size);
-        void VerboseEvent(string message, object[] args);
-        void MessageEvent(string message);
-        void RetryEvent(string message, Exception ex);
-        void WarningEvent(string message, Exception ex);
-        void ErrorEvent(string message, Exception ex);
-        void DryrunEvent(string message);
-        
+
         /// <summary>
         /// Sets the backend progress update object
         /// </summary>
         /// <value>The backend progress update object</value>
-        IBackendProgress BackendProgress { set; }
-        
+        void SetBackendProgress(IBackendProgress progress);
+
         /// <summary>
         /// Sets the operation progress update object
         /// </summary>
         /// <value>The operation progress update object</value>
-        IOperationProgress OperationProgress { set; }
+        void SetOperationProgress(IOperationProgress progress);
+    }
+
+    /// <summary>
+    /// Helper class to allow setting multiple message sinks on a single controller
+    /// </summary>
+    public class MultiMessageSink : IMessageSink
+    {
+        /// <summary>
+        /// The sinks in this instance
+        /// </summary>
+        private IMessageSink[] m_sinks;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="T:Duplicati.Library.Main.MultiMessageSink"/> class.
+        /// </summary>
+        /// <param name="sinks">The sinks to use.</param>
+        public MultiMessageSink(params IMessageSink[] sinks)
+        {
+            m_sinks = (sinks ?? new IMessageSink[0]).Where(x => x != null).ToArray();
+        }
+
+        /// <summary>
+        /// Appends a new sink to the list
+        /// </summary>
+        /// <param name="sink">The sink to append.</param>
+        public void Append(IMessageSink sink)
+        {
+            if (sink == null)
+                return;
+            
+            var na = new IMessageSink[m_sinks.Length + 1];
+            Array.Copy(m_sinks, na, m_sinks.Length);
+            na[na.Length - 1] = sink;
+            m_sinks = na;
+        }
+
+        public void SetBackendProgress(IBackendProgress progress)
+        {
+            foreach (var s in m_sinks)
+                s.SetBackendProgress(progress);
+        }
+
+        public void SetOperationProgress(IOperationProgress progress)
+        {
+            foreach (var s in m_sinks)
+                s.SetOperationProgress(progress);
+        }
+
+        public void BackendEvent(BackendActionType action, BackendEventType type, string path, long size)
+        {
+            foreach (var s in m_sinks)
+                s.BackendEvent(action, type, path, size);
+        }
+
+        public void WriteMessage(LogEntry entry)
+        {
+            foreach (var s in m_sinks)
+                s.WriteMessage(entry);
+        }
     }
     
     /// <summary>
@@ -62,7 +124,8 @@ namespace Duplicati.Library.Main
         /// <param name="size">The current size</param>
         /// <param name="progress">The current number of transferred bytes</param>
         /// <param name="bytes_pr_second">Transfer speed in bytes pr second, -1 for unknown</param>
-        void Update(out BackendActionType action, out string path, out long size, out long progress, out long bytes_pr_second);
+        /// <param name="isBlocking">A value indicating if the backend is blocking operation progress</param>
+        void Update(out BackendActionType action, out string path, out long size, out long progress, out long bytes_pr_second, out bool isBlocking);
     }
     
     /// <summary>
@@ -80,8 +143,20 @@ namespace Duplicati.Library.Main
         /// <summary>
         /// Updates the current progress
         /// </summary>
-        /// <param name="progress">he current number of transferred bytes</param>
+        /// <param name="progress">The current number of transferred bytes</param>
         void UpdateProgress(long progress);
+
+        /// <summary>
+        /// Updates the total size
+        /// </summary>
+        /// <param name="size">The new total size</param>
+        void UpdateTotalSize(long size);
+
+        /// <summary>
+        /// Sets a flag indicating if the backend operation is blocking progress
+        /// </summary>
+        /// <param name="isBlocking">If set to <c>true</c> the backend is blocking.</param>
+        void SetBlocking(bool isBlocking);
     }
     
     /// <summary>
@@ -120,6 +195,10 @@ namespace Duplicati.Library.Main
         /// The time the last action started
         /// </summary>
         private DateTime m_actionStart;
+        /// <summary>
+        /// A value indicating when the last blocking was done
+        /// </summary>
+        private DateTime m_blockingSince;
         
         /// <summary>
         /// Register the start of a new action
@@ -129,26 +208,36 @@ namespace Duplicati.Library.Main
         /// <param name="size">The size of the file being transferred</param>
         public void StartAction(BackendActionType action, string path, long size)
         {
-            lock(m_lock)
+            lock (m_lock)
             {
                 m_action = action;
                 m_path = path;
                 m_size = size;
                 m_progress = 0;
-                m_actionStart = DateTime.Now;                
+                m_actionStart = DateTime.Now;
             }
         }
-        
+
         /// <summary>
         /// Updates the progress
         /// </summary>
         /// <param name="progress">The current number of transferred bytes</param>
         public void UpdateProgress(long progress)
         {
-            lock(m_lock)
+            lock (m_lock)
                 m_progress = progress;
         }
-        
+
+        /// <summary>
+        /// Updates the total size
+        /// </summary>
+        /// <param name="size">The new total size</param>
+        public void UpdateTotalSize(long size)
+        {
+            lock (m_lock)
+                m_size = size;
+        }
+
         /// <summary>
         /// Update with the current action, path, size, progress and bytes_pr_second.
         /// </summary>
@@ -157,7 +246,8 @@ namespace Duplicati.Library.Main
         /// <param name="size">The current size</param>
         /// <param name="progress">The current number of transferred bytes</param>
         /// <param name="bytes_pr_second">Transfer speed in bytes pr second, -1 for unknown</param>
-        public void Update(out BackendActionType action, out string path, out long size, out long progress, out long bytes_pr_second)
+        /// <param name="isBlocking">A value indicating if the backend is blocking operation progress</param>
+        public void Update(out BackendActionType action, out string path, out long size, out long progress, out long bytes_pr_second, out bool isBlocking)
         {
             lock(m_lock)
             {
@@ -165,7 +255,8 @@ namespace Duplicati.Library.Main
                 path = m_path;
                 size = m_size;
                 progress = m_progress;
-                
+                isBlocking = m_blockingSince.Ticks > 0 && (DateTime.Now - m_blockingSince).TotalSeconds > 1;
+                    
                 //TODO: The speed should be more dynamic,
                 // so we need a sample window instead of always 
                 // calculating from the beginning
@@ -175,7 +266,16 @@ namespace Duplicati.Library.Main
                     bytes_pr_second = (long)(m_progress / (DateTime.Now - m_actionStart).TotalSeconds);
             }
         }
-        
+
+		/// <summary>
+		/// Sets a flag indicating if the backend operation is blocking progress
+		/// </summary>
+		/// <param name="isBlocking">If set to <c>true</c> the backend is blocking.</param>
+		public void SetBlocking(bool isBlocking)
+        {
+            lock (m_lock)
+                m_blockingSince = isBlocking ? DateTime.Now : new DateTime(0);
+        }
     }
     
     public delegate void PhaseChangedDelegate(OperationPhase phase, OperationPhase previousPhase);
@@ -279,7 +379,6 @@ namespace Duplicati.Library.Main
             {
                 m_curfilename = filename;
                 m_curfilesize = size;
-                m_curfileoffset = 0;
             }
         }
         
@@ -305,6 +404,7 @@ namespace Duplicati.Library.Main
             {
                 m_filesprocessed = count;
                 m_filesizeprocessed = size;
+                m_curfileoffset = 0;
             }
         }
         

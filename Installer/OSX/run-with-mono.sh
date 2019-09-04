@@ -26,11 +26,11 @@ REQUIRED_MINOR=0
 
 VERSION_TITLE="Cannot launch $APP_NAME"
 VERSION_MSG="$APP_NAME requires the Mono Framework version $REQUIRED_MAJOR.$REQUIRED_MINOR or later."
-DOWNLOAD_URL="http://www.go-mono.com/mono-downloads/download.html"
+DOWNLOAD_URL="http://www.mono-project.com/download/stable/#download-mac"
 
 # Try to find system default Mono if an override was not supplied
 if [ "z${MONO_BIN}" == "z" ]; then
-	MONO_BIN=`which mono`
+	MONO_BIN=$(which mono)
 
     # If the result is broken, don't use it
 	if [ ! -f "${MONO_BIN}" ]; then
@@ -46,6 +46,10 @@ if [ "z${MONO_BIN}" == "z" ]; then
 		# Check if there is a system version of Mono
 		elif [ -f "/Library/Frameworks/Mono.framework/Versions/Current/Commands/mono" ]; then
 			MONO_BIN="/Library/Frameworks/Mono.framework/Versions/Current/Commands/mono"
+
+		# Check if there is a MacPorts version of Mono
+		elif [ -f "/opt/local/bin/mono" ]; then
+			MONO_BIN="/opt/local/bin/mono"
 
 		# Set up some default that will likely fail
 		else

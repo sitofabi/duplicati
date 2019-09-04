@@ -15,7 +15,6 @@
 //  You should have received a copy of the GNU Lesser General Public
 //  License along with this library; if not, write to the Free Software
 //  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
-using System;
 
 namespace Duplicati.Library.Utility
 {
@@ -35,13 +34,29 @@ namespace Duplicati.Library.Utility
             return First.Matches(entry, out result, out match) || Second.Matches(entry, out result, out match);
         }
 
+        /// <summary>
+        /// Returns MD5 hash of filter expression
+        /// </summary>
+        /// <returns>MD5 hash of filter expression</returns>
+        public string GetFilterHash()
+        {
+            var hash = MD5HashHelper.GetHash(new[] {First.GetFilterHash(), Second.GetFilterHash()});
+			return Utility.ByteArrayAsHexString(hash);
+        }
+
         public bool Empty { get { return First.Empty && Second.Empty; } }
         
         public static IFilter Join(IFilter first, IFilter second)
         {
-            if (first == null || first.Empty)
+            if (first == null && second == null)
+                return null;
+            else if (first == null)
                 return second;
-            else if (second == null || second.Empty)
+            else if (second == null)
+                return first;
+            else if (first.Empty)
+                return second;
+            else if (second.Empty)
                 return first;
             else
             {
@@ -59,7 +74,7 @@ namespace Duplicati.Library.Utility
             else if (this.Second.Empty)
                 return this.First.ToString();
             else
-                return "(" + this.First.ToString() + ") || (" + this.Second.ToString() + ")";
+                return "(" + this.First + ") || (" + this.Second + ")";
         }
     }
 }

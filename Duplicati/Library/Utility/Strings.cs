@@ -35,4 +35,7 @@ namespace Duplicati.Library.Utility.Strings {
     internal static class MD5CalculatingStream {
         public static string IncorrectUsageError { get { return LC.L(@"Cannot read and write on the same stream"); } }
     }
+    internal static class Filters {
+        public static string UnknownFilterGroup(string filterSet) { return LC.L(@"The string {0} does not represent a known filter group name. Valid values are: {1}", filterSet, string.Join(", ", Enum.GetNames(typeof(FilterGroup)))); }
+    }
 }

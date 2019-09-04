@@ -18,7 +18,6 @@ using System;
 using NUnit.Framework;
 using System.IO;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Duplicati.UnitTest
 {
@@ -29,7 +28,7 @@ namespace Duplicati.UnitTest
         /// </summary>
         protected static readonly string BASEFOLDER =
             string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("UNITTEST_BASEFOLDER"))
-            ? Library.Utility.Utility.ExpandEnvironmentVariables(Path.Combine("~", "testdata"))
+            ? Path.Combine(Library.Utility.Utility.HOME_PATH, "duplicati_testdata")
             : Environment.GetEnvironmentVariable("UNITTEST_BASEFOLDER");
 
         /// <summary>
@@ -60,9 +59,7 @@ namespace Duplicati.UnitTest
         /// this can be used to diagnose errors on a CI build instance by setting
         /// the environment variable DEBUG_OUTPUT=1 and running the job
         /// </summary>
-        public static readonly bool DEBUG_OUTPUT =
-            new[] { "1", "true", "on", "yes" }
-            .Contains(Environment.GetEnvironmentVariable("DEBUG_OUTPUT") ?? "", StringComparer.InvariantCultureIgnoreCase);
+        public static readonly bool DEBUG_OUTPUT = Library.Utility.Utility.ParseBool(Environment.GetEnvironmentVariable("DEBUG_OUTPUT"), false);
 
         /// <summary>
         /// Writes a message to TestContext.Progress and Console.Out
@@ -73,27 +70,64 @@ namespace Duplicati.UnitTest
         {
             if (!DEBUG_OUTPUT)
                 TestContext.Progress.WriteLine(msg, args);
-            Console.WriteLine(msg, args);
+            Console.WriteLine("==> " + msg, args);
         }
 
         [OneTimeSetUp]
-        public virtual void PrepareSourceData()
+        public virtual void OneTimeSetUp()
         {
             if (DEBUG_OUTPUT)
+            {
                 Console.SetOut(TestContext.Progress);
+            }
 
-            ProgressWriteLine("Deleting backup data and log...");
-            if (Directory.Exists(DATAFOLDER))
-                Directory.Delete(DATAFOLDER, true);
-            if (File.Exists(LOGFILE))
-                File.Delete(LOGFILE);
-            ProgressWriteLine("Deleting older data");
-            if (File.Exists(DBFILE))
-                File.Delete(DBFILE);
-            if (Directory.Exists(TARGETFOLDER))
-                Directory.Delete(TARGETFOLDER, true);
+            Directory.CreateDirectory(BASEFOLDER);
+            this.TearDown();
+            this.OneTimeTearDown();
         }
 
+        [OneTimeTearDown]
+        public virtual void OneTimeTearDown()
+        {
+            // No-op by default.
+        }
+
+        [SetUp]
+        public void SetUp()
+        {
+            Directory.CreateDirectory(this.DATAFOLDER);
+            Directory.CreateDirectory(this.TARGETFOLDER);
+            Directory.CreateDirectory(this.RESTOREFOLDER);
+        }
+
+        [TearDown]
+        public virtual void TearDown()
+        {
+            if (Directory.Exists(this.DATAFOLDER))
+            {
+                Directory.Delete(this.DATAFOLDER, true);
+            }
+            if (Directory.Exists(this.TARGETFOLDER))
+            {
+                Directory.Delete(this.TARGETFOLDER, true);
+            }
+            if (Directory.Exists(this.RESTOREFOLDER))
+            {
+                Directory.Delete(this.RESTOREFOLDER, true);
+            }
+            if (File.Exists(this.LOGFILE))
+            {
+                File.Delete(this.LOGFILE);
+            }
+            if (File.Exists(this.DBFILE))
+            {
+                File.Delete(this.DBFILE);
+            }
+            if (File.Exists($"{this.DBFILE}-journal"))
+            {
+                File.Delete($"{this.DBFILE}-journal");
+            }
+        }
 
         protected virtual Dictionary<string, string> TestOptions
         {
@@ -103,17 +137,18 @@ namespace Duplicati.UnitTest
                 //opts["blockhash-lookup-memory"] = "0";
                 //opts["filehash-lookup-memory"] = "0";
                 //opts["metadatahash-lookup-memory"] = "0";
-                //opts["disable-filepath-cache"] = "";
+                //opts["disable-filepath-cache"] = "true";
 
                 opts["passphrase"] = "123456";
-                opts["debug-output"] = "";
-                opts["log-level"] = "profiling";
+                opts["debug-output"] = "true";
+                opts["log-file-log-level"] = nameof(Library.Logging.LogMessageType.Profiling);
                 opts["log-file"] = LOGFILE;
                 opts["dblock-size"] = "10mb";
                 opts["dbpath"] = DBFILE;
                 opts["blocksize"] = "10kb";
                 opts["backup-test-samples"] = "0";
                 opts["keep-versions"] = "100";
+                opts["unittest-mode"] = "true";
 
                 return opts;
             }

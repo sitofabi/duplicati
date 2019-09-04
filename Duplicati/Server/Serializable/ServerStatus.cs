@@ -65,10 +65,10 @@ namespace Duplicati.Server.Serializable
             get 
             { 
                 var t = Program.WorkThread.CurrentTask;
-                if (t == null || t.Backup == null)
+                if (t == null)
                     return null;
                 else
-                    return new Tuple<long, string>(t.TaskID, t.Backup.ID);
+                    return new Tuple<long, string>(t.TaskID, t.Backup == null ? null : t.Backup.ID);
             }
         }
 
@@ -84,7 +84,7 @@ namespace Duplicati.Server.Serializable
                 return (
                     from n in Program.Scheduler.Schedule
                                 let backupid = (from t in n.Value.Tags
-                                                where t != null && t.StartsWith("ID=")
+                                                where t != null && t.StartsWith("ID=", StringComparison.Ordinal)
                                                 select t.Substring("ID=".Length)).FirstOrDefault()
                                 where !string.IsNullOrWhiteSpace(backupid)
                                 select new Tuple<string, DateTime>(backupid, n.Key)

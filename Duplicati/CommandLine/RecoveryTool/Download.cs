@@ -17,6 +17,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Duplicati.CommandLine.RecoveryTool
 {
@@ -48,7 +49,7 @@ namespace Duplicati.CommandLine.RecoveryTool
 
                 Console.WriteLine("Listing files on backend: {0} ...", backend.ProtocolKey);
 
-                var lst = backend.List();
+                var lst = backend.List().ToList();
 
                 Console.WriteLine("Found {0} files", lst.Count);
 
@@ -121,7 +122,7 @@ namespace Duplicati.CommandLine.RecoveryTool
                     }
                     catch(Exception ex)
                     {
-                        Console.WriteLine(" error: {0}", ex.ToString());
+                        Console.WriteLine(" error: {0}", ex);
                         errors++;
                     }
 
@@ -136,7 +137,7 @@ namespace Duplicati.CommandLine.RecoveryTool
 
                 Console.WriteLine("Download complete, of {0} remote files, {1} were downloaded with {2} errors", lst.Count, downloaded, errors);
                 if (needspass > 0)
-                    Console.WriteLine("Additonally {0} remote files were skipped because of encryption, supply --passphrase to download those");
+                    Console.WriteLine("Additonally {0} remote files were skipped because of encryption, supply --passphrase to download those", needspass);
 
                 if (errors > 0)
                     return 200;
